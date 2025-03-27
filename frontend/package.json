@@ -1,0 +1,15 @@
+{
+  "name": "metal-notifier-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for metal price notification system",
+  "main": "index.html",
+  "scripts": {
+    "start": "node_modules/.bin/web-dev-server --node-resolve --open --watch"
+  },
+  "dependencies": {
+    "lit": "^2.7.4"
+  },
+  "devDependencies": {
+    "@web/dev-server": "^0.1.36"
+  }
+}
