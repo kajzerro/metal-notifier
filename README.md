@@ -160,8 +160,8 @@ The system will check all templates and send notifications if the criteria match
 
 Tests are organized by type:
 
-- **Unit Tests**: Naming convention in `*Test.java`
-- **Integration Tests**: Located in `*IT.java`
+- **Unit Tests**: Naming convention `*Test.java`
+- **Integration Tests**: Naming convention `*IT.java`
 
 
 ---
