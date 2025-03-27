@@ -4,14 +4,14 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.1.0-brightgreen)
 ![Lit](https://img.shields.io/badge/Lit-2.7.4-blue)
 
-## 🚀 DEMO
+## 🚀 DEMO (wait few seconds videos are loading)
 ### Adding new template
 ![Demo Gif](docs/new_template.gif)
 
-### Editing template
+### Editing the same template
 ![Demo Gif](docs/edit_template.gif)
 
-### Triggering new metal perice event
+### Triggering new metal perice event for added template (two calls, first triggers emails, second doesn't)
 ![Demo Gif](docs/trigger_rule.gif)
 
 
@@ -32,7 +32,6 @@
 - **Lit**: Web components framework
 - **JavaScript**: Frontend logic
 - **CSS3**: Styling
-- **HTTP Server**: Static file serving
 
 ## 🏗️ Architecture
 

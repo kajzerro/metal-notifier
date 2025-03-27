@@ -17,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-//@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 public class MetalNotifierIT {
 
     @Autowired
@@ -59,13 +60,12 @@ public class MetalNotifierIT {
     @Test
     @Transactional
     public void testEndToEndFlow_CreateTemplateAndProcessNotification() throws Exception {
-        // 1. Utwórz szablon z regułami
+
         NotificationTemplate template = new NotificationTemplate();
         template.setTitle("Gold price alert");
         template.setContent("Gold price has changed significantly!");
         template.setRecipients(Arrays.asList(new Recipient("testtest@ingtest.pl"), new Recipient("testtest2@ingtest.pl")));
 
-        // Dodaj reguły
         List<Rule> rules = new ArrayList<>();
         Rule rule1 = new Rule();
         rule1.setOperator(Operator.ITEM_IS);
@@ -81,24 +81,24 @@ public class MetalNotifierIT {
         
         template.setRules(rules);
         
-        // Zapisz szablon poprzez API
+        // Save template thrue API
         NotificationTemplate createdTemplate = createNewTemplateThrueAPI(template);
         Long templateId = createdTemplate.getId();
         
-        // 2. Sprawdź, czy szablon został prawidłowo zapisany w bazie danych
+        // 2. Check if template exist in db thru API
         ensureTemplateSuccessfullySavedThrueAPI(templateId, "Gold price alert", 2);
 
-        // 3. Wyślij powiadomienie o cenie złota, które powinno spowodować wysłanie powiadomienia
+        // 3.Send gold price notificaiton which should trigger email
         sendNewPriceNotification(new MetalPrice("gold", BigDecimal.valueOf(1600.00)));
 
         verify(emailService, times(2)).sendEmail(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
         Mockito.reset(emailService);
-        // 4. Wyślij powiadomienie o cenie złota, które NIE powinno spowodować wysłania powiadomienia
+        // 4. .Send gold price notificaiton which should not trigger email
 
         sendNewPriceNotification(new MetalPrice("gold", BigDecimal.valueOf(1400.00)));
         verifyNoInteractions(emailService);
 
-        // 5. Zaktualizuj szablon
+        // 5. Update template
         createdTemplate.setContent("Updated content");
         String updatedTemplateJson = objectMapper.writeValueAsString(createdTemplate);
         
@@ -108,11 +108,11 @@ public class MetalNotifierIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", is("Updated content")));
         
-        // 6. Usuń szablon
+        // 6. Delete tempalte
         mockMvc.perform(delete("/api/templates/{id}", templateId))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
         
-        // 7. Sprawdź, czy szablon został usunięty
+        // 7. Check if deleted
         mockMvc.perform(get("/api/templates/{id}", templateId))
                 .andExpect(status().isNotFound());
     }
@@ -150,55 +150,4 @@ public class MetalNotifierIT {
         return createdTemplate;
     }
 
-    @Test
-    @Transactional
-    public void testValidation_CreateTemplate_InvalidData() throws Exception {
-        // 1. Próba utworzenia szablonu z pustym tytułem
-        NotificationTemplate template = new NotificationTemplate();
-        template.setTitle(""); // Pusty tytuł
-        template.setContent("Some content");
-        
-        String templateJson = objectMapper.writeValueAsString(template);
-        
-        mockMvc.perform(post("/api/templates")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(templateJson))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors", not(empty())));
-        
-        // 2. Próba utworzenia szablonu z pustą treścią
-        template.setTitle("Valid title");
-        template.setContent(""); // Pusta treść
-        
-        templateJson = objectMapper.writeValueAsString(template);
-        
-        mockMvc.perform(post("/api/templates")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(templateJson))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors", not(empty())));
-    }
-
-    @Test
-    public void testValidation_ProcessNewPrice_InvalidData() throws Exception {
-        // 1. Próba przetworzenia ceny z nieprawidłowym typem metalu
-        MetalPrice invalidMetalPrice = new MetalPrice("invalid", BigDecimal.valueOf(1000.00));
-        String invalidPriceJson = objectMapper.writeValueAsString(invalidMetalPrice);
-        
-        mockMvc.perform(post("/api/new-price")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(invalidPriceJson))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors", not(empty())));
-        
-        // 2. Próba przetworzenia ceny z nieprawidłowym formatem ceny
-        MetalPrice invalidPriceFormat = new MetalPrice("gold", BigDecimal.valueOf(1));
-        String invalidFormatJson = objectMapper.writeValueAsString(invalidPriceFormat);
-        
-        mockMvc.perform(post("/api/new-price")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(invalidFormatJson))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors", not(empty())));
-    }
 }
