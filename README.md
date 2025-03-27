@@ -27,6 +27,7 @@ A modern notification system for precious metal price changes. Configure persona
 - **HTTP Server**: Static file serving
 
 ## 🏗️ Architecture
+![Demo Gif](docs/demo_create_template_rule.gif)
 
 The application follows a classic three-tier architecture:
 
