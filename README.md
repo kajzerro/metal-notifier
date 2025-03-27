@@ -3,11 +3,19 @@
 ![Java](https://img.shields.io/badge/Java-17-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.1.0-brightgreen)
 ![Lit](https://img.shields.io/badge/Lit-2.7.4-blue)
-![License](https://img.shields.io/badge/License-MIT-yellow)
 
-A modern notification system for precious metal price changes. Configure personalized templates, set precise price conditions, and receive targeted email notifications when market prices match your defined criteria.
+## 🚀 DEMO
+### Adding new template
+![Demo Gif](docs/new_template.gif)
+
+### Editing template
+![Demo Gif](docs/edit_template.gif)
+
+### Triggering new metal perice event
+![Demo Gif](docs/trigger_rule.gif)
 
 
+### 
 
 ## 🛠️ Technology Stack
 
@@ -27,7 +35,7 @@ A modern notification system for precious metal price changes. Configure persona
 - **HTTP Server**: Static file serving
 
 ## 🏗️ Architecture
-![Demo Gif](docs/demo_create_template_rule.gif)
+
 
 The application follows a classic three-tier architecture:
 
