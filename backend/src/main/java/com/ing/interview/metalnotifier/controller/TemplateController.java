@@ -1,6 +1,6 @@
 package com.ing.interview.metalnotifier.controller;
 
-import com.ing.interview.metalnotifier.model.NotificationTemplate;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
 import com.ing.interview.metalnotifier.service.NotificationService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;

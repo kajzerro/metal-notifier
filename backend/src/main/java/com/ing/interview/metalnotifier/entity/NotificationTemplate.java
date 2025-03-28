@@ -1,5 +1,6 @@
-package com.ing.interview.metalnotifier.model;
+package com.ing.interview.metalnotifier.entity;
 
+import com.ing.interview.metalnotifier.model.MetalPrice;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;

@@ -1,6 +1,6 @@
 package com.ing.interview.metalnotifier.repository;
 
-import com.ing.interview.metalnotifier.model.NotificationTemplate;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

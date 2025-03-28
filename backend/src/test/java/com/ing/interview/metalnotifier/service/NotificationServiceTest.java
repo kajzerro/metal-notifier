@@ -1,6 +1,9 @@
 // Testy jednostkowe dla NotificationService
 package com.ing.interview.metalnotifier.service;
 
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
+import com.ing.interview.metalnotifier.entity.Recipient;
+import com.ing.interview.metalnotifier.entity.Rule;
 import com.ing.interview.metalnotifier.model.*;
 import com.ing.interview.metalnotifier.repository.NotificationTemplateRepository;
 import org.junit.jupiter.api.BeforeEach;

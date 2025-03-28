@@ -2,10 +2,10 @@ package com.ing.interview.metalnotifier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ing.interview.metalnotifier.model.MetalPrice;
-import com.ing.interview.metalnotifier.model.NotificationTemplate;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
 import com.ing.interview.metalnotifier.model.Operator;
-import com.ing.interview.metalnotifier.model.Recipient;
-import com.ing.interview.metalnotifier.model.Rule;
+import com.ing.interview.metalnotifier.entity.Recipient;
+import com.ing.interview.metalnotifier.entity.Rule;
 import com.ing.interview.metalnotifier.repository.NotificationTemplateRepository;
 import com.ing.interview.metalnotifier.service.EmailService;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,7 +1,7 @@
 package com.ing.interview.metalnotifier.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ing.interview.metalnotifier.model.NotificationTemplate;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
 import com.ing.interview.metalnotifier.service.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

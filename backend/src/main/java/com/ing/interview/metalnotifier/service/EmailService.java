@@ -1,8 +1,8 @@
 package com.ing.interview.metalnotifier.service;
 
 import com.ing.interview.metalnotifier.model.MetalPrice;
-import com.ing.interview.metalnotifier.model.NotificationTemplate;
-import com.ing.interview.metalnotifier.model.Recipient;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
+import com.ing.interview.metalnotifier.entity.Recipient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

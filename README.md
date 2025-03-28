@@ -26,7 +26,8 @@
 - **Jakarta Validation**: Input validation
 - **Lombok**: Boilerplate code reduction
 - **JUnit 5 & Mockito**: Testing framework
-- **H2 Database**: Data storage
+- **H2 Database (for local profile)**: Data storage
+- **Postgres (for dev profile)**: Data storage
 
 ### Frontend
 - **Lit**: Web components framework
@@ -39,15 +40,15 @@
 The application follows a classic three-tier architecture:
 
 ```
-┌────────────┐     ┌────────────┐     ┌────────────┐
-│  Frontend  │◄────┤   Backend  │◄────┤  Database  │
-│    (Lit)   │     │(Spring Boot│     │    (H2)    │
-└────────────┘     └────────────┘     └────────────┘
+┌────────────┐     ┌────────────┐     ┌─────────────┐
+│  Frontend  │◄────┤   Backend  │◄────┤  Database   │
+│    (Lit)   │     │(Spring Boot│     │(H2/Postgres)│
+└────────────┘     └────────────┘     └─────────────┘
 ```
 
 - **Frontend**: User interface built with Lit web components
 - **Backend**: RESTful API powered by Spring Boot
-- **Database**: H2 database for persistent storage
+- **Database**: H2/Posgtres database for persistent storage
 
 ## 📦 Installation & Setup
 
@@ -58,18 +59,22 @@ The application follows a classic three-tier architecture:
 
 ### Backend Setup
 
-1. **Clone the repository**
+1. (optional if you want to start dev profile with postgres instead of h2)
    ```bash
-   git clone https://github.com/yourusername/metal-notifier.git
-   cd metal-notifier
-   ```
-
+   (base) mateuszkaszyk@Mateuszs-MBP ~ % docker run --name local-postgres2 \
+   -e POSTGRES_PASSWORD=mysecretpassword \
+   -p 5432:5432 \
+   -d postgres
+      ```
 2. **Build and run the backend**
    ```bash
-   cd backend
    mvn clean install
    mvn spring-boot:run
    ```
+   optional:
+   ```bash
+   mvn spring-boot:run -Dspring-boot.run.profiles=dev
+     ```
    The backend will start on http://localhost:8080
 
 ### Frontend Setup
@@ -135,22 +140,6 @@ The system will check all templates and send notifications if the criteria match
    }
    ```
 
-### Template Format
-
-```json
-{
-  "title": "Template Title",
-  "content": "Notification content text",
-  "recipients": [
-    {"email": "user1@example.com"},
-    {"email": "user2@example.com"}
-  ],
-  "rules": [
-    {"operator": "ITEM_IS", "operand": "gold"},
-    {"operator": "PRICE_IS_GREATER_THAN", "operand": "1800.00"}
-  ]
-   }
-   ```
 
 
 ## 🧪 Testing

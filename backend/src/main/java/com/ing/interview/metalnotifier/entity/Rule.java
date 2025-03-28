@@ -1,6 +1,9 @@
-package com.ing.interview.metalnotifier.model;
+package com.ing.interview.metalnotifier.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
+import com.ing.interview.metalnotifier.model.MetalPrice;
+import com.ing.interview.metalnotifier.model.Operator;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 

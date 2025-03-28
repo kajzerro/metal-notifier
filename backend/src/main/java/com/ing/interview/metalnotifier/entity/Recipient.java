@@ -1,6 +1,7 @@
-package com.ing.interview.metalnotifier.model;
+package com.ing.interview.metalnotifier.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.ing.interview.metalnotifier.entity.NotificationTemplate;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
