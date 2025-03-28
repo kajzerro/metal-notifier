@@ -152,6 +152,9 @@ Tests are organized by type:
 - **Unit Tests**: Naming convention `*Test.java`
 - **Integration Tests**: Naming convention `*IT.java`
 
+## 🛠️ Posssible imporovemetns:
+
+Use seperate DTOS and Entities with Mappers to seeperate from API layer from persisiatance layer
 
 ---
 

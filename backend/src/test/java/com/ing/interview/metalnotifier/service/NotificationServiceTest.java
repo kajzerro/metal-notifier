@@ -1,4 +1,3 @@
-// Testy jednostkowe dla NotificationService
 package com.ing.interview.metalnotifier.service;
 
 import com.ing.interview.metalnotifier.entity.NotificationTemplate;
@@ -45,7 +44,6 @@ public class NotificationServiceTest {
 
     @BeforeEach
     public void setup() {
-        // Przygotowanie danych testowych
         template1 = new NotificationTemplate();
         template1.setId(1L);
         template1.setTitle("Gold price alert");
