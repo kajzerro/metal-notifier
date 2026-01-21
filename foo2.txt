@@ -1,0 +1,318 @@
+package pl.ingbank.cms2.neweasylending.criterion.calculation.impl;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import pl.ingbank.cms2.neweasylending.monitoringMinimalInflow.entity.ConditionEntity;
+import pl.ingbank.cms2.neweasylending.monitoringMinimalInflow.entity.SettlementEntity;
+import pl.ingbank.cms2.neweasylending.monitoringMinimalInflow.enums.SettlementCalculateStatusEnum;
+import pl.ingbank.cms2.neweasylending.monitoringMinimalInflow.enums.SettlementStatusEnum;
+import pl.ingbank.cms2.neweasylending.monitoringMinimalInflow.repo.ConditionRepository;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class MinimumInflowCriterionOperationTest implements WithAssertions {
+
+    @Mock
+    ConditionRepository conditionRepository;
+
+    MinimumInflowCriterionOperation operation;
+
+    private static final String TEST_KKF = "TEST_KKF_123";
+    private static final String CONDITION_CODE_JDG = "JDG0000001";
+
+    @BeforeEach
+    void setUp() {
+        operation = new MinimumInflowCriterionOperation(
+                BasicEntityCreatorHelper.createApplicationWithCustomer(),
+                Map.of(),
+                conditionRepository
+        );
+    }
+
+    @Test
+    void prepareDataInput_conditionExists() {
+        // given
+        ConditionEntity condition = createCondition(TEST_KKF, CONDITION_CODE_JDG);
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+
+        // when
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // then
+        MinimumInflowCriterionOperation.DataInput dataInput =
+                (MinimumInflowCriterionOperation.DataInput) operation.getParams().values().iterator().next();
+        assertThat(dataInput.condition()).isEqualTo(condition);
+    }
+
+    @Test
+    void prepareDataInput_conditionNotExists() {
+        // given
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.empty());
+
+        // when
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // then
+        assertThat(operation.getParams()).isEmpty();
+    }
+
+    @Test
+    void prepareDataInput_kkfIsNull() {
+        // given
+        var application = BasicEntityCreatorHelper.createApplicationWithCustomerWithoutKkf();
+
+        // when
+        operation.prepareDataInput(application);
+
+        // then
+        assertThat(operation.getParams()).isEmpty();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_noCondition_returnsTrue() {
+        // given
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.empty());
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_noSettlements_returnsTrue() {
+        // given
+        ConditionEntity condition = createCondition(TEST_KKF, CONDITION_CODE_JDG);
+        condition.setSettlements(new HashSet<>());
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_allSettlementsPassed_returnsTrue() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(1)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(2)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(3))
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_oneSettlementFailed_returnsFalse() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(1)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.FAILED, LocalDate.now().minusMonths(2)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(3))
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_oneSettlementError_returnsFalse() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(1)),
+                createSettlement(SettlementStatusEnum.ERROR, SettlementCalculateStatusEnum.NOT_EXECUTED, LocalDate.now().minusMonths(2))
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_settlementOutsideControlPeriod_ignored() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(1)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.FAILED, LocalDate.now().minusMonths(7))
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_settlementOnBoundaryStart_included() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.FAILED, LocalDate.now().minusMonths(6))
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_settlementToday_included() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.FAILED, LocalDate.now())
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_mixedStatuses_returnsFalse() {
+        // given
+        ConditionEntity condition = createConditionWithSettlements(
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(1)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.PASSED, LocalDate.now().minusMonths(2)),
+                createSettlement(SettlementStatusEnum.ARCHIVE, SettlementCalculateStatusEnum.FAILED, LocalDate.now().minusMonths(3)),
+                createSettlement(SettlementStatusEnum.ERROR, SettlementCalculateStatusEnum.NOT_EXECUTED, LocalDate.now().minusMonths(4))
+        );
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_usesExecutedDateWhenAvailable() {
+        // given
+        SettlementEntity settlement = SettlementEntity.builder()
+                .settlementStatus(SettlementStatusEnum.ARCHIVE)
+                .calculateStatus(SettlementCalculateStatusEnum.FAILED)
+                .plannedDateOfControl(LocalDate.now().minusMonths(8))
+                .executedDateOfControl(LocalDateTime.now().minusMonths(2))
+                .build();
+        ConditionEntity condition = createConditionWithSettlements(settlement);
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void execCriteriaAlgorithm_irrelevantStatusIgnored() {
+        // given
+        SettlementEntity settlement = SettlementEntity.builder()
+                .settlementStatus(SettlementStatusEnum.WAITING_FOR_SETTLEMENT)
+                .calculateStatus(SettlementCalculateStatusEnum.NOT_EXECUTED)
+                .executedDateOfControl(LocalDateTime.now().minusMonths(1))
+                .build();
+        ConditionEntity condition = createConditionWithSettlements(settlement);
+        when(conditionRepository.findByKkfAndCode(any(), eq(CONDITION_CODE_JDG)))
+                .thenReturn(Optional.of(condition));
+        operation.prepareDataInput(BasicEntityCreatorHelper.createApplicationWithCustomer());
+
+        // when
+        boolean result = operation.execCriteriaAlgorithm(createActorIdentifier());
+
+        // then
+        assertThat(result).isTrue();
+    }
+
+    private ConditionEntity createCondition(String kkf, String code) {
+        return ConditionEntity.builder()
+                .kkf(kkf)
+                .code(code)
+                .settlements(new HashSet<>())
+                .build();
+    }
+
+    private ConditionEntity createConditionWithSettlements(SettlementEntity... settlements) {
+        ConditionEntity condition = createCondition(TEST_KKF, CONDITION_CODE_JDG);
+        Set<SettlementEntity> settlementSet = new HashSet<>();
+        for (SettlementEntity settlement : settlements) {
+            settlement.setCondition(condition);
+            settlementSet.add(settlement);
+        }
+        condition.setSettlements(settlementSet);
+        return condition;
+    }
+
+    private SettlementEntity createSettlement(SettlementStatusEnum status,
+                                               SettlementCalculateStatusEnum calcStatus,
+                                               LocalDate executedDate) {
+        return SettlementEntity.builder()
+                .settlementStatus(status)
+                .calculateStatus(calcStatus)
+                .executedDateOfControl(executedDate.atStartOfDay())
+                .build();
+    }
+
+    private ActorIdentifier createActorIdentifier() {
+        return new ActorIdentifier(CustomerRelationTypeEnum.COMPANY, TEST_KKF);
+    }
+}
