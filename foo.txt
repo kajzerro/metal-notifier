@@ -1,0 +1,209 @@
+
+
+import lombok.NonNull;
+
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+public class MinimumInflowCriterionOperation extends CalculateCriterionOperation {
+
+    private static final String CONDITION_CODE_JDG = "JDG0000001";
+    private static final int DEFAULT_CONTROL_MONTHS = 6;
+
+    private final CustomerRepository customerRepository;
+    private final ConditionRepository conditionRepository;
+    private final ParametersService parametersService;
+    private Map<ActorIdentifier, CalculateCriterionOperationDataInput> dataInput;
+
+    protected MinimumInflowCriterionOperation(@NonNull ApplicationEntity application,
+                                              @NonNull Map<DataSourceTypeEnum, DataSourceCacheEntity> dataSources,
+                                              CustomerRepository customerRepository,
+                                              ConditionRepository conditionRepository,
+                                              ParametersService parametersService) {
+        super(application, dataSources);
+        this.customerRepository = customerRepository;
+        this.conditionRepository = conditionRepository;
+        this.parametersService = parametersService;
+    }
+
+    @Override
+    public CriterionTypeWithVersionEnum getType() {
+        return CriterionTypeWithVersionEnum.MINIMAL_INFLOWS;
+    }
+
+    @Override
+    protected boolean execCriteriaAlgorithm(ActorIdentifier actor) {
+        DataInput calculationData = (DataInput) getParams().get(actor);
+        
+        if (calculationData == null || calculationData.condition() == null) {
+            // No condition found for this client - positive result (no restrictions)
+            return true;
+        }
+
+        ConditionEntity condition = calculationData.condition();
+        Set<SettlementEntity> settlements = condition.getSettlements();
+        
+        // RC AC20923: Determine control period
+        LocalDate today = LocalDate.now();
+        int controlMonths = getControlMonthsParameter();
+        LocalDate periodStart = today.minusMonths(controlMonths);
+        
+        // RC AC20918: Filter settlements in the control period with relevant statuses
+        Set<SettlementEntity> settlementsInPeriod = filterSettlementsInControlPeriod(
+            settlements, periodStart, today
+        );
+
+        // RC D9279: Check if client has any settlement in the control period
+        if (settlementsInPeriod.isEmpty()) {
+            // No settlements found - positive result
+            return true;
+        }
+
+        // Get the most recent settlement and its status (RC AC20918 point 2)
+        Optional<SettlementEntity> latestSettlement = findLatestSettlement(settlementsInPeriod);
+        
+        if (latestSettlement.isEmpty()) {
+            return true;
+        }
+
+        SettlementEntity latest = latestSettlement.get();
+
+        // RC D9278: Check for Archive/FAILED status - negative verification
+        if (isFailedSettlement(latest)) {
+            return false; // RC AC20920: Negative verification
+        }
+
+        // RC D9292: Check for Error/NOT_EXECUTED status - negative verification  
+        if (isErrorSettlement(latest)) {
+            return false; // RC AC20920: Negative verification
+        }
+
+        // RC AC20925: Positive verification (Archive/PASSED or no problematic status)
+        return true;
+    }
+
+    @Override
+    protected void prepareDataInput(ApplicationEntity application) {
+        clearDataInput();
+        
+        // RC AC20927: Get client KKF info
+        String kkf = application.getApplicationCustomer().getCustomer().getKkf();
+        
+        if (kkf == null || kkf.isBlank()) {
+            return;
+        }
+
+        // RC AC20928: Get condition info for this client
+        Optional<ConditionEntity> conditionOpt = conditionRepository.findByKkfAndCode(kkf, CONDITION_CODE_JDG);
+        
+        if (conditionOpt.isEmpty()) {
+            return;
+        }
+
+        ActorIdentifier actorId = new ActorIdentifier(
+            CustomerRelationTypeEnum.COMPANY,
+            kkf
+        );
+
+        addToDataInput(actorId, new DataInput(conditionOpt.get()));
+    }
+
+    @Override
+    protected Map<ActorIdentifier, CalculateCriterionOperationDataInput> getParams() {
+        if (dataInput == null) {
+            dataInput = new HashMap<>();
+        }
+        return dataInput;
+    }
+
+    protected final void clearDataInput() {
+        this.dataInput = new HashMap<>();
+    }
+
+    protected void addToDataInput(ActorIdentifier actorId, DataInput input) {
+        if (this.dataInput == null) {
+            this.dataInput = new HashMap<>();
+        }
+        this.dataInput.put(actorId, input);
+    }
+
+    private int getControlMonthsParameter() {
+        // RC AC20927: Parameter "liczba miesięcy kontroli = 6"
+        // Could be retrieved from parametersService if configurable
+        return DEFAULT_CONTROL_MONTHS;
+    }
+
+    private Set<SettlementEntity> filterSettlementsInControlPeriod(
+            Set<SettlementEntity> settlements,
+            LocalDate periodStart,
+            LocalDate periodEnd) {
+        
+        return settlements.stream()
+            .filter(s -> isSettlementInPeriod(s, periodStart, periodEnd))
+            .filter(s -> hasRelevantStatus(s))
+            .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private boolean isSettlementInPeriod(SettlementEntity settlement, 
+                                          LocalDate periodStart, 
+                                          LocalDate periodEnd) {
+        LocalDate executedDate = settlement.getExecutedDateOfControl() != null 
+            ? settlement.getExecutedDateOfControl().toLocalDate()
+            : settlement.getPlannedDateOfControl();
+            
+        if (executedDate == null) {
+            return false;
+        }
+        
+        return !executedDate.isBefore(periodStart) && !executedDate.isAfter(periodEnd);
+    }
+
+    private boolean hasRelevantStatus(SettlementEntity settlement) {
+        // RC AC20918: Filter by relevant status combinations
+        SettlementStatusEnum status = settlement.getSettlementStatus();
+        SettlementCalculateStatusEnum calcStatus = settlement.getCalculateStatus();
+        
+        // a) Archive + PASSED
+        // b) Archive + FAILED  
+        // c) Error + NOT_EXECUTED
+        return (status == SettlementStatusEnum.ARCHIVE && 
+                (calcStatus == SettlementCalculateStatusEnum.PASSED || 
+                 calcStatus == SettlementCalculateStatusEnum.FAILED))
+            || (status == SettlementStatusEnum.ERROR && 
+                calcStatus == SettlementCalculateStatusEnum.NOT_EXECUTED);
+    }
+
+    private Optional<SettlementEntity> findLatestSettlement(Set<SettlementEntity> settlements) {
+        return settlements.stream()
+            .max((s1, s2) -> {
+                LocalDate d1 = getSettlementDate(s1);
+                LocalDate d2 = getSettlementDate(s2);
+                return d1.compareTo(d2);
+            });
+    }
+
+    private LocalDate getSettlementDate(SettlementEntity settlement) {
+        if (settlement.getExecutedDateOfControl() != null) {
+            return settlement.getExecutedDateOfControl().toLocalDate();
+        }
+        return settlement.getPlannedDateOfControl();
+    }
+
+    private boolean isFailedSettlement(SettlementEntity settlement) {
+        // RC D9278: settlementStatus = Archive, calculateStatus = FAILED
+        return settlement.getSettlementStatus() == SettlementStatusEnum.ARCHIVE  
+            && settlement.getCalculateStatus() == SettlementCalculateStatusEnum.FAILED;
+    }
+
+    private boolean isErrorSettlement(SettlementEntity settlement) {
+        // RC D9292: settlementStatus = Error, calculateStatus = NOT_EXECUTED
+        return settlement.getSettlementStatus() == SettlementStatusEnum.ERROR
+            && settlement.getCalculateStatus() == SettlementCalculateStatusEnum.NOT_EXECUTED;
+    }
+
+    record DataInput(ConditionEntity condition) implements CalculateCriterionOperationDataInput {
+    }
+}
