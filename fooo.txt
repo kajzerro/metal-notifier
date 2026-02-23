@@ -1,0 +1,284 @@
+// =============================================================================
+// REFACTORING: margin1/margin2/marginPeriod1From/etc → margins[]
+// =============================================================================
+
+// ─── 1. MODEL VALUE (constructor) ───────────────────────────────────────────
+
+// BEFORE:
+/*
+this.modelValue = {
+  margin: '',
+  marginAfterConversion: '',
+  interestTypeOf: '',
+  interestEffectivePeriodMonth: 'calendarMonth',
+  interestAccrualPeriod: INTERESTACCRUALPERIODDEFAULT,
+  interestAccrualPeriodMonth: INTERESTACCRUALPERIODMONTHDEFAULT,
+  baseRate: 'wibor1M',
+  fixedInterestRate: '',
+  fixedInterestRateHour: '14:30',
+  changeMarginInPeriods: false,
+  marginPeriod1From: null,
+  marginPeriod1To: null,
+  margin1: '',
+  marginPeriod2From: null,
+  marginPeriod2To: null,
+  margin2: '',
+};
+*/
+
+// AFTER:
+/*
+this.modelValue = {
+  margin: '',
+  marginAfterConversion: '',
+  interestTypeOf: '',
+  interestEffectivePeriodMonth: 'calendarMonth',
+  interestAccrualPeriod: INTERESTACCRUALPERIODDEFAULT,
+  interestAccrualPeriodMonth: INTERESTACCRUALPERIODMONTHDEFAULT,
+  baseRate: 'wibor1M',
+  fixedInterestRate: '',
+  fixedInterestRateHour: '14:30',
+  changeMarginInPeriods: false,
+  margins: [
+    { from: null, to: null, value: '' },
+    { from: null, to: null, value: '' },
+  ],
+};
+*/
+
+
+// ─── 2. HELPER: get/set a single margin entry safely ────────────────────────
+
+_getMargin(index) {
+  return this.modelValue.margins?.[index] || { from: null, to: null, value: '' };
+}
+
+_updateMarginAtIndex(index, changes) {
+  const margins = (this.modelValue.margins || []).map((m, i) =>
+    i === index ? { ...m, ...changes } : { ...m }
+  );
+  this.modelValue = { ...this.modelValue, margins };
+  this.dispatchEvent(new CustomEvent('model-value-changed'));
+}
+
+
+// ─── 3. _updatingMarginPeriodsIfNeeded ──────────────────────────────────────
+
+// BEFORE: scattered period1From, period2To, margin1, margin2 logic
+// AFTER:
+
+_updatingMarginPeriodsIfNeeded(oldValue) {
+  let needsUpdate = false;
+  const margins = (this.modelValue.margins || []).map(m => ({ ...m }));
+  const oldMargins = oldValue?.margins || [];
+
+  // Period 1 "from" ← creditFacilityPeriodFrom
+  const period1From = this.modelValue?.creditFacilityPeriodFrom || '';
+  if (period1From && !margins[0]?.from) {
+    margins[0] = { ...margins[0], from: period1From };
+    needsUpdate = true;
+  }
+
+  // Last period "to" ← creditFacilityPeriodTo
+  const lastIndex = margins.length - 1;
+  const periodLastTo = this.modelValue?.creditFacilityPeriodTo || '';
+  if (periodLastTo && !margins[lastIndex]?.to) {
+    margins[lastIndex] = { ...margins[lastIndex], to: periodLastTo };
+    needsUpdate = true;
+  }
+
+  // For each period (except the first): auto-fill "from" = previous period "to" + 1 day
+  for (let i = 1; i < margins.length; i++) {
+    const prevTo = margins[i - 1]?.to;
+    const oldPrevTo = oldMargins[i - 1]?.to;
+
+    if (prevTo && (!oldValue || oldPrevTo !== prevTo)) {
+      const nextDay = this._calculateNextDay(prevTo);
+      if (nextDay) {
+        margins[i] = { ...margins[i], from: nextDay };
+        needsUpdate = true;
+      }
+    }
+  }
+
+  if (needsUpdate) {
+    this._updatingMarginPeriods = true;
+    this.modelValue = { ...this.modelValue, margins };
+    this.dispatchEvent(new CustomEvent('model-value-changed'));
+    this.updateComplete.then(() => {
+      this._updatingMarginPeriods = false;
+    });
+  }
+}
+
+
+// ─── 4. _renderMarginPeriods ────────────────────────────────────────────────
+
+_renderMarginPeriods() {
+  const margins = this.modelValue.margins || [];
+
+  return html`
+    <div class="row margin-periods-section">
+      ${margins.map((margin, index) => this._renderSingleMarginPeriod(margin, index))}
+    </div>
+  `;
+}
+
+_renderSingleMarginPeriod(margin, index) {
+  const periodLabel = this.localize('ProductParameters.marginPeriod' + (index + 1))
+    || `Okres ${index + 1}`;
+
+  return html`
+    <div class="col-12">
+      <!-- Period heading -->
+      <div class="row">
+        <div class="col-4 form-label">
+          <p><strong>${periodLabel}</strong></p>
+        </div>
+      </div>
+
+      <!-- Date pickers row: Od / Do -->
+      <div class="row">
+        <div class="col-4 form-label">
+          <p>${this.localize('ProductParameters.marginPeriodFrom') || 'Od'}</p>
+        </div>
+        <div class="col-3">
+          <cms2-product-date-picker
+            id="marginPeriod${index}From"
+            name="marginPeriod${index}From"
+            label=""
+            class="date-input"
+            .submitted=${true}
+            .errorValidators="${[]}"
+            .modelValue="${margin.from}"
+            modelKey="margins"
+            @model-value-changed=${(e) => this._onMarginDateChanged(index, 'from', e)}
+            .disabled=${true}
+            placeholder="${this.localize('ProductParameters.datePlaceholder')}"
+          ></cms2-product-date-picker>
+        </div>
+
+        <div class="col-1 form-label">
+          <p>${this.localize('ProductParameters.marginPeriodTo') || 'Do'}</p>
+        </div>
+        <div class="col-3">
+          <cms2-product-date-picker
+            id="marginPeriod${index}To"
+            name="marginPeriod${index}To"
+            .modelValue="${margin.to}"
+            modelKey="margins"
+            label=""
+            class="date-input"
+            .submitted=${true}
+            .errorValidators="${[]}"
+            @model-value-changed=${(e) => this._onMarginDateChanged(index, 'to', e)}
+            .disabled=${this.isDisabled({ sectionName: 'priceTermsSection', propName: `marginPeriod${index}To` })}
+            placeholder="${this.localize('ProductParameters.datePlaceholder')}"
+          ></cms2-product-date-picker>
+        </div>
+      </div>
+
+      <!-- Margin value row -->
+      <div class="row">
+        <div class="col-4 form-label">
+          <p>${this.localize('ProductParameters.margin') || 'Marża'} ${index + 1}</p>
+        </div>
+        <div class="col-8">
+          <div class="input-container margin">
+            <x2-input-amount
+              at-id="margin${index}"
+              .modelValue=${checkTypeAndParseNumeric(margin.value)}
+              label=""
+              class="short-input"
+              modelKey="margins"
+              currency="PLN"
+              .formatOptions=${{
+                minimumFractionDigits: FOUR_DECIMALS_PLACES_NUMBER,
+                maximumFractionDigits: FOUR_DECIMALS_PLACES_NUMBER,
+              }}
+              .errorValidators="${[
+                defaultPercentValidator(),
+                requiredField(this.modelValue.productType, `margin${index}`),
+                negativeValueValidator(margin.value),
+              ]}"
+              .disabled=${this.isDisabled({ sectionName: 'priceTermsSection', propName: `margin${index}` })}
+              @model-value-changed=${(e) => this._onMarginValueChanged(index, e)}
+            ></x2-input-amount>
+            <p class="percent">%</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+
+// ─── 5. EVENT HANDLERS for margin periods ───────────────────────────────────
+
+_onMarginDateChanged(index, field, e) {
+  const dateValue = e.target.modelValue;
+  this._updateMarginAtIndex(index, { [field]: dateValue });
+}
+
+_onMarginValueChanged(index, e) {
+  const value = e.target.modelValue;
+  this._updateMarginAtIndex(index, { value });
+}
+
+
+// ─── 6. CHECKBOX change handler (updated) ───────────────────────────────────
+
+// In the checkbox @change handler, make sure the margins array is
+// initialized when the checkbox is toggled on:
+/*
+@change=${(e) => {
+  const checked = e.target.checked;
+  const currentMargins = this.modelValue.margins || [];
+  this.modelValue = {
+    ...this.modelValue,
+    changeMarginInPeriods: checked,
+    // Ensure at least 2 periods exist when toggled on
+    margins: checked && currentMargins.length < 2
+      ? [
+          { from: null, to: null, value: '' },
+          { from: null, to: null, value: '' },
+        ]
+      : currentMargins,
+  };
+  this.dispatchEvent(new CustomEvent('model-value-changed'));
+}}
+*/
+
+
+// ─── 7. SERIALIZATION (if backend still expects flat fields) ────────────────
+// If the backend/parent expects the old flat format, add a converter:
+
+_toFlatMarginFields() {
+  const margins = this.modelValue.margins || [];
+  const result = {};
+  margins.forEach((m, i) => {
+    const n = i + 1;
+    result[`marginPeriod${n}From`] = m.from;
+    result[`marginPeriod${n}To`] = m.to;
+    result[`margin${n}`] = m.value;
+  });
+  return result;
+}
+
+_fromFlatMarginFields(flatModel) {
+  const margins = [];
+  let i = 1;
+  while (flatModel[`margin${i}`] !== undefined || flatModel[`marginPeriod${i}From`] !== undefined) {
+    margins.push({
+      from: flatModel[`marginPeriod${i}From`] || null,
+      to: flatModel[`marginPeriod${i}To`] || null,
+      value: flatModel[`margin${i}`] || '',
+    });
+    i++;
+  }
+  // Ensure at least 2 entries
+  while (margins.length < 2) {
+    margins.push({ from: null, to: null, value: '' });
+  }
+  return margins;
+}
