@@ -157,7 +157,7 @@
     <div class="app-logo">C</div>
     <div>
       <div class="app-title">COMET Release Branch Validation</div>
-      <div class="app-subtitle">Verify CRD tickets against GitHub release branches · github.com/cg-ict · jira.capgroup.com</div>
+      <div class="app-subtitle">Verify CRD tickets against GitHub release branches · github.com/cg-ict · capitalgroup.atlassian.net</div>
     </div>
   </div>
   <div class="cors-notice" id="corsNotice">
@@ -247,7 +247,7 @@
   </div>
 </div>
 <script>
-const JIRA_DIRECT='https://jira.capgroup.com',GH_DIRECT='https://api.github.com',GH_OWNER='cg-ict',PROJECT_KEY='CRD',TICKET_RE=/CRD-\d+/g,STABLE_BRANCH='project/comet';
+const JIRA_DIRECT='https://capitalgroup.atlassian.net',GH_DIRECT='https://api.github.com',GH_OWNER='cg-ict',PROJECT_KEY='CRD',TICKET_RE=/CRD-\d+/g,STABLE_BRANCH='project/comet';
 // Use local proxy if served from localhost (avoids CORS), otherwise direct
 const USE_PROXY=location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const JIRA_BASE=USE_PROXY?'/api/jira':JIRA_DIRECT;
@@ -391,6 +391,36 @@ async function runValidation(){
         const directIssue=await jiraFetch(`/rest/api/2/issue/${testKey}?fields=fixVersions`);
         log(`  [DEBUG] /issue/${testKey} fixVersions: ${JSON.stringify(directIssue.fields?.fixVersions)}`,'info');
       }catch(e){log(`  [DEBUG] /issue/ fetch failed: ${e.message}`,'error')}
+
+      // DIAGNOSTIC: fetch ALL fields to find where the version actually lives
+      log(`  [DEBUG] Fetching ALL fields for ${testKey} to find real version field…`,'info');
+      try{
+        const fullIssue=await jiraFetch(`/rest/api/2/issue/${testKey}`);
+        const fields=fullIssue.fields||{};
+        const versionFields=[];
+        for(const[key,val]of Object.entries(fields)){
+          if(val===null||val===undefined)continue;
+          const str=JSON.stringify(val);
+          // Look for anything containing version-like data
+          if(str.includes('26.1')||str.includes(cv)||(key.toLowerCase().includes('version')&&val)){
+            versionFields.push({key,val:str.substring(0,200)});
+          }
+        }
+        if(versionFields.length>0){
+          log(`  [DEBUG] ⚡ Fields containing version data:`,'success');
+          for(const f of versionFields){
+            log(`  [DEBUG]   ${f.key} = ${f.val}`,'success');
+          }
+        }else{
+          log(`  [DEBUG] No fields containing "26.1" or "version" found. Listing all non-null customfield_ entries:`,'info');
+          for(const[key,val]of Object.entries(fields)){
+            if(key.startsWith('customfield_')&&val!==null&&val!==undefined){
+              const str=JSON.stringify(val).substring(0,150);
+              if(str!=='""'&&str!=='0'&&str!=='false')log(`  [DEBUG]   ${key} = ${str}`,'');
+            }
+          }
+        }
+      }catch(e){log(`  [DEBUG] Full issue fetch failed: ${e.message}`,'error')}
     }
 
     setProgress(100);log('✓ Validation complete!','success');
