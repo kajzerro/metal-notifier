@@ -167,14 +167,18 @@
   </div>
   <div class="config-grid">
     <div class="config-card animate-in" style="animation-delay:0.05s">
-      <h2><span class="icon jira-icon">J</span> JIRA Token</h2>
+      <h2><span class="icon jira-icon">J</span> JIRA Credentials</h2>
       <div class="field">
-        <label>Personal Access Token</label>
+        <label>Email</label>
+        <input type="text" id="jiraUser" placeholder="your.name@capgroup.com">
+      </div>
+      <div class="field">
+        <label>API Token</label>
         <div class="token-field-wrap">
-          <input type="password" id="jiraToken" placeholder="Paste your JIRA PAT">
+          <input type="password" id="jiraToken" placeholder="Paste your Atlassian API token">
           <button class="token-toggle" onclick="toggleVis('jiraToken',this)">👁</button>
         </div>
-        <div class="hint">JIRA → Profile → Personal Access Tokens</div>
+        <div class="hint">Generate at <em>id.atlassian.com/manage-profile/security/api-tokens</em></div>
       </div>
       <hr class="section-divider">
       <h2 style="margin-top:4px"><span class="icon gh-icon">G</span> GitHub Token</h2>
@@ -259,7 +263,7 @@ function initRepoChips(){const c=document.getElementById('repoChips');c.innerHTM
 initRepoChips();
 function toggleAllRepos(){const a=selectedRepos.size===CRD_REPOS.length;document.querySelectorAll('.repo-chip').forEach(ch=>{const r=ch.dataset.repo;if(a){selectedRepos.delete(r);ch.classList.remove('active')}else{selectedRepos.add(r);ch.classList.add('active')}})}
 
-function saveConfig(){if(!document.getElementById('saveConfig').checked)return;const f=['jiraToken','ghToken','currentVersion','previousVersion','teamName'],d={};f.forEach(k=>d[k]=document.getElementById(k).value);try{localStorage.setItem('cometCfg',JSON.stringify(d))}catch(e){}}
+function saveConfig(){if(!document.getElementById('saveConfig').checked)return;const f=['jiraUser','jiraToken','ghToken','currentVersion','previousVersion','teamName'],d={};f.forEach(k=>d[k]=document.getElementById(k).value);try{localStorage.setItem('cometCfg',JSON.stringify(d))}catch(e){}}
 function loadConfig(){try{const r=localStorage.getItem('cometCfg');if(!r)return;const d=JSON.parse(r);Object.entries(d).forEach(([k,v])=>{const el=document.getElementById(k);if(el&&v)el.value=v})}catch(e){}}
 loadConfig();
 
@@ -270,7 +274,7 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 function getVal(id){return document.getElementById(id).value.trim()}
 function extractTickets(t){const m=t.match(TICKET_RE);return m?[...new Set(m)]:[]}
 
-function jiraHeaders(){return{'Authorization':'Bearer '+getVal('jiraToken'),'Content-Type':'application/json','Accept':'application/json'}}
+function jiraHeaders(){return{'Authorization':'Basic '+btoa(getVal('jiraUser')+':'+getVal('jiraToken')),'Content-Type':'application/json','Accept':'application/json'}}
 function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const t=getVal('ghToken');if(t)h['Authorization']='token '+t;return h}
 async function jiraFetch(p){const r=await fetch(JIRA_BASE+p,{headers:jiraHeaders()});if(!r.ok)throw new Error(`JIRA ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
 async function ghFetch(p){const r=await fetch(GH_API+p,{headers:ghHeaders()});if(!r.ok)throw new Error(`GitHub ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
@@ -334,7 +338,7 @@ function buildJql(keys,team,currentVer,mode){
 function findRepos(key,map,field){return Object.entries(map).filter(([r,d])=>d[field]&&d[field].includes(key)).map(([r])=>r)}
 
 async function runValidation(){
-  if(!getVal('jiraToken')){alert('Enter JIRA Personal Access Token');return}
+  if(!getVal('jiraUser')||!getVal('jiraToken')){alert('Enter JIRA email and API token');return}
   if(!getVal('ghToken')){alert('Enter GitHub token');return}
   if(!getVal('currentVersion')){alert('Enter current release version');return}
   if(!getVal('previousVersion')){alert('Enter previous release version');return}
