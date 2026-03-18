@@ -303,7 +303,7 @@ async function getTicketsFromCompare(repo,base,head){
 async function jiraQueryIssues(jql){
   const all=[];let s=0,t=Infinity;
   while(s<t){
-    const d=await jiraFetch(`/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=100&startAt=${s}&fields=key,summary,status,fixVersions,issuetype,assignee`);
+    const d=await jiraFetch(`/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&startAt=${s}&fields=key,summary,status,fixVersions,issuetype,assignee`);
     t=d.total;
     all.push(...(d.issues||[]));
     // LOG RAW RESPONSE for first batch
@@ -393,7 +393,7 @@ async function runValidation(){
       log(`═══ DIAGNOSTIC: Dumping ALL fields for ${testKey}`,'info');
       setProgress(88);
       try{
-        const fullIssue=await jiraFetch(`/rest/api/2/issue/${testKey}`);
+        const fullIssue=await jiraFetch(`/rest/api/3/issue/${testKey}`);
         const fields=fullIssue.fields||{};
         const keys=Object.keys(fields).sort();
         log(`  Total fields: ${keys.length}`,'info');
