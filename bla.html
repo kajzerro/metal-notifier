@@ -383,44 +383,28 @@ async function runValidation(){
     let missIssues=jql2?await jiraQueryIssues(jql2):[];
     log(`  Found ${missIssues.length} potentially missing`,missIssues.length>0?'error':'success');
 
-    // Also fetch a single issue directly to compare what the /issue endpoint returns vs /search
+    // ── DIAGNOSTIC: Dump ALL fields for first accidental issue ──
     if(accIssues.length>0){
       const testKey=accIssues[0].key;
-      log(`  [DEBUG] Fetching ${testKey} via /rest/api/2/issue/ for comparison…`,'info');
-      try{
-        const directIssue=await jiraFetch(`/rest/api/2/issue/${testKey}?fields=fixVersions`);
-        log(`  [DEBUG] /issue/${testKey} fixVersions: ${JSON.stringify(directIssue.fields?.fixVersions)}`,'info');
-      }catch(e){log(`  [DEBUG] /issue/ fetch failed: ${e.message}`,'error')}
-
-      // DIAGNOSTIC: fetch ALL fields to find where the version actually lives
-      log(`  [DEBUG] Fetching ALL fields for ${testKey} to find real version field…`,'info');
+      log(`═══ DIAGNOSTIC: Dumping ALL fields for ${testKey}`,'info');
+      setProgress(88);
       try{
         const fullIssue=await jiraFetch(`/rest/api/2/issue/${testKey}`);
         const fields=fullIssue.fields||{};
-        const versionFields=[];
-        for(const[key,val]of Object.entries(fields)){
-          if(val===null||val===undefined)continue;
+        const keys=Object.keys(fields).sort();
+        log(`  Total fields: ${keys.length}`,'info');
+        for(const key of keys){
+          const val=fields[key];
+          if(val===null||val===undefined){
+            continue; // skip nulls to reduce noise
+          }
           const str=JSON.stringify(val);
-          // Look for anything containing version-like data
-          if(str.includes('26.1')||str.includes(cv)||(key.toLowerCase().includes('version')&&val)){
-            versionFields.push({key,val:str.substring(0,200)});
-          }
+          if(str==='""'||str==='0'||str==='false'||str==='[]')continue; // skip empty
+          // Truncate long values
+          const display=str.length>300?str.substring(0,300)+'…':str;
+          log(`  ${key} = ${display}`,'');
         }
-        if(versionFields.length>0){
-          log(`  [DEBUG] ⚡ Fields containing version data:`,'success');
-          for(const f of versionFields){
-            log(`  [DEBUG]   ${f.key} = ${f.val}`,'success');
-          }
-        }else{
-          log(`  [DEBUG] No fields containing "26.1" or "version" found. Listing all non-null customfield_ entries:`,'info');
-          for(const[key,val]of Object.entries(fields)){
-            if(key.startsWith('customfield_')&&val!==null&&val!==undefined){
-              const str=JSON.stringify(val).substring(0,150);
-              if(str!=='""'&&str!=='0'&&str!=='false')log(`  [DEBUG]   ${key} = ${str}`,'');
-            }
-          }
-        }
-      }catch(e){log(`  [DEBUG] Full issue fetch failed: ${e.message}`,'error')}
+      }catch(e){log(`  Fetch failed: ${e.message}`,'error')}
     }
 
     setProgress(100);log('✓ Validation complete!','success');
