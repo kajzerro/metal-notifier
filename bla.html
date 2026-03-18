@@ -277,6 +277,11 @@ function extractTickets(t){const m=t.match(TICKET_RE);return m?[...new Set(m)]:[
 function jiraHeaders(){return{'Authorization':'Basic '+btoa(getVal('jiraUser')+':'+getVal('jiraToken')),'Content-Type':'application/json','Accept':'application/json'}}
 function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const t=getVal('ghToken');if(t)h['Authorization']='token '+t;return h}
 async function jiraFetch(p){const r=await fetch(JIRA_BASE+p,{headers:jiraHeaders()});if(!r.ok)throw new Error(`JIRA ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
+async function jiraPost(jql,maxResults=10){
+  const resp=await fetch(JIRA_BASE+'/rest/api/3/search/jql',{method:'POST',headers:jiraHeaders(),body:JSON.stringify({jql,maxResults,fields:['key','summary','status','fixVersions','issuetype','assignee']})});
+  if(!resp.ok)throw new Error(`JIRA ${resp.status}: ${(await resp.text()).substring(0,300)}`);
+  return resp.json();
+}
 async function ghFetch(p){const r=await fetch(GH_API+p,{headers:ghHeaders()});if(!r.ok)throw new Error(`GitHub ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
 
 async function getTicketsFromCompare(repo,base,head){
@@ -398,6 +403,31 @@ async function runValidation(){
     log(`Phase 2 done: ${allCT.size} unique tickets`,'success');
 
     log(`═══ Phase 3: JIRA — accidental inclusions`,'info');setProgress(62);
+
+    // Test query to verify connection and field names
+    const testKeys=[...allPT].slice(0,3).map(k=>`"${k}"`).join(',');
+    log(`  [TEST] Running diagnostic queries…`,'info');
+    try{
+      // Test 1: just key filter
+      const t1=await jiraPost(`project = ${PROJECT_KEY} AND key in (${testKeys})`);
+      log(`  [TEST] project + key only: ${t1.issues?.length||0} results`,'info');
+      if(t1.issues&&t1.issues[0]){
+        log(`  [TEST] Sample: ${t1.issues[0].key} fixVersions=${JSON.stringify(t1.issues[0].fields?.fixVersions)}`,'info');
+      }
+
+      // Test 2: with team filter
+      const t2=await jiraPost(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND key in (${testKeys})`);
+      log(`  [TEST] + Assigned Team: ${t2.issues?.length||0} results`,'info');
+
+      // Test 3: with fixVersion filter
+      const t3=await jiraPost(`project = ${PROJECT_KEY} AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
+      log(`  [TEST] + fixVersion filter: ${t3.issues?.length||0} results`,'info');
+
+      // Test 4: full query
+      const t4=await jiraPost(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
+      log(`  [TEST] full query: ${t4.issues?.length||0} results`,'info');
+    }catch(e){log(`  [TEST] Error: ${e.message}`,'error')}
+
     const jql1=buildJql([...allPT],team,cv,'accidental');
     if(jql1)log(`  JQL: ${jql1.substring(0,200)}${jql1.length>200?'…':''}`,'');
     let accIssues=jql1?await jiraQueryIssues(jql1):[];
