@@ -318,7 +318,9 @@ async function jiraQueryIssues(jql){
       const errText=await resp.text();
       throw new Error(`JIRA ${resp.status}: ${errText.substring(0,300)}`);
     }
-    const d=await resp.json();
+    const rawText=await resp.text();
+    if(page===0)log(`  [DEBUG] Raw response (first 600 chars): ${rawText.substring(0,600)}`,'info');
+    const d=JSON.parse(rawText);
 
     // Debug: log raw response structure on first page
     if(page===0){
