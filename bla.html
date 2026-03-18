@@ -161,9 +161,10 @@
     </div>
   </div>
   <div class="cors-notice" id="corsNotice">
-    <strong>⚠ CORS Notice:</strong> Your browser may block direct API calls to <code>jira.capgroup.com</code>.
-    Install <strong>"CORS Unblock"</strong> or <strong>"Allow CORS"</strong> browser extension and enable it while using this tool.
-    GitHub API should work natively. If not, the extension fixes both.
+    <strong>⚠ Important:</strong> This tool must be run via the included server to work properly.
+    <br>Double-click <code>start-windows.bat</code> (Windows) or run <code>./start-mac-linux.sh</code> (Mac/Linux).
+    <br>The server routes API calls through a local proxy to avoid browser CORS restrictions.
+    <br>Requires Python 3 (pre-installed on most systems).
   </div>
   <div class="config-grid">
     <div class="config-card animate-in" style="animation-delay:0.05s">
@@ -247,7 +248,11 @@
   </div>
 </div>
 <script>
-const JIRA_BASE='https://jira.capgroup.com',GH_OWNER='cg-ict',GH_API='https://api.github.com',PROJECT_KEY='CRD',TICKET_RE=/CRD-\d+/g,STABLE_BRANCH='project/comet';
+const JIRA_DIRECT='https://jira.capgroup.com',GH_DIRECT='https://api.github.com',GH_OWNER='cg-ict',PROJECT_KEY='CRD',TICKET_RE=/CRD-\d+/g,STABLE_BRANCH='project/comet';
+// Use local proxy if served from localhost (avoids CORS), otherwise direct
+const USE_PROXY=location.hostname==='localhost'||location.hostname==='127.0.0.1';
+const JIRA_BASE=USE_PROXY?'/api/jira':JIRA_DIRECT;
+const GH_API=USE_PROXY?'/api/github':GH_DIRECT;
 const CRD_REPOS=['comet-autosys','comet-op-clientaddins','comet-op-database','comet-op-dbadmin','comet-op-middletier','comet-op-mtplugins','comet-op-powercenter','comet-op-services'];
 let verificationResult=null,selectedRepos=new Set(CRD_REPOS);
 
@@ -397,7 +402,7 @@ function renderIssueTable(pid,issues,emptyMsg){
   if(!issues.length){p.innerHTML=`<div class="result-table-wrap"><div class="empty-state">✓ ${emptyMsg}</div></div>`;return}
   let h=`<div class="result-table-wrap"><table class="result-table"><thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Fix Version(s)</th><th>Assignee</th><th>Found In</th></tr></thead><tbody>`;
   for(const i of issues){
-    h+=`<tr><td><a class="ticket-key" href="${JIRA_BASE}/browse/${i.key}" target="_blank">${esc(i.key)}</a></td><td style="max-width:300px">${esc(i.summary)}</td><td><span class="status-pill ${getStatusClass(i.status)}">${esc(i.status)}</span></td><td>${i.fixVersions.length?i.fixVersions.map(v=>`<span class="version-tag">${esc(v)}</span>`).join(' '):'<span style="color:var(--warning)">EMPTY</span>'}</td><td>${esc(i.assignee)}</td><td>${i.repos.map(r=>`<span class="repo-tag">${r}</span>`).join(' ')}</td></tr>`;
+    h+=`<tr><td><a class="ticket-key" href="${JIRA_DIRECT}/browse/${i.key}" target="_blank">${esc(i.key)}</a></td><td style="max-width:300px">${esc(i.summary)}</td><td><span class="status-pill ${getStatusClass(i.status)}">${esc(i.status)}</span></td><td>${i.fixVersions.length?i.fixVersions.map(v=>`<span class="version-tag">${esc(v)}</span>`).join(' '):'<span style="color:var(--warning)">EMPTY</span>'}</td><td>${esc(i.assignee)}</td><td>${i.repos.map(r=>`<span class="repo-tag">${r}</span>`).join(' ')}</td></tr>`;
   }
   p.innerHTML=h+'</tbody></table></div>';
 }
@@ -406,7 +411,7 @@ function renderAllTickets(r){
   const p=document.getElementById('panel-allTickets'),t=r.allPrevTickets,accSet=new Set(r.accidental.map(a=>a.key));
   if(!t.length){p.innerHTML='<div class="result-table-wrap"><div class="empty-state">No tickets.</div></div>';return}
   let h=`<div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">${t.length} unique CRD tickets from release diff. Red = unexpected Fix Version.</div><div class="result-table-wrap"><table class="result-table"><thead><tr><th>Ticket</th><th>Status</th></tr></thead><tbody>`;
-  for(const k of t.sort()){const bad=accSet.has(k);h+=`<tr><td><a class="ticket-key" href="${JIRA_BASE}/browse/${k}" target="_blank" ${bad?'style="color:var(--danger)"':''}>${k}</a></td><td>${bad?'<span class="badge badge-red">Unexpected Fix Version</span>':'<span class="badge badge-green">OK</span>'}</td></tr>`}
+  for(const k of t.sort()){const bad=accSet.has(k);h+=`<tr><td><a class="ticket-key" href="${JIRA_DIRECT}/browse/${k}" target="_blank" ${bad?'style="color:var(--danger)"':''}>${k}</a></td><td>${bad?'<span class="badge badge-red">Unexpected Fix Version</span>':'<span class="badge badge-green">OK</span>'}</td></tr>`}
   p.innerHTML=h+'</tbody></table></div>';
 }
 
@@ -466,7 +471,7 @@ async function runMockDemo(){
   renderResults(verificationResult);
 }
 
-if(window.location.protocol==='file:')setTimeout(()=>document.getElementById('corsNotice').style.display='block',500);
+if(!USE_PROXY)document.getElementById('corsNotice').style.display='block';
 </script>
 </body>
 </html>
