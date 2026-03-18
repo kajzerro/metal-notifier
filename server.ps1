@@ -22,7 +22,7 @@ Write-Host "http://localhost:$Port" -ForegroundColor Green
 Write-Host "  Opening browser..." -ForegroundColor Gray
 Write-Host ""
 Write-Host "  API proxy routes:"
-Write-Host "    /api/jira/*    ->  jira.capgroup.com" -ForegroundColor DarkGray
+Write-Host "    /api/jira/*    ->  capitalgroup.atlassian.net" -ForegroundColor DarkGray
 Write-Host "    /api/github/*  ->  api.github.com" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Press Ctrl+C to stop." -ForegroundColor Yellow
@@ -208,7 +208,7 @@ try {
 
         # Route requests
         if ($path.StartsWith("/api/jira/")) {
-            Send-ProxyRequest $context "https://jira.capgroup.com" "/api/jira/"
+            Send-ProxyRequest $context "https://capitalgroup.atlassian.net" "/api/jira/"
         }
         elseif ($path.StartsWith("/api/github/")) {
             Send-ProxyRequest $context "https://api.github.com" "/api/github/"
