@@ -91,6 +91,8 @@ function Send-ProxyRequest($context, $targetBase, $prefixToStrip) {
             $body = $ms.ToArray()
             $ms.Close()
             $webReq.ContentLength = $body.Length
+            $bodyStr = [System.Text.Encoding]::UTF8.GetString($body)
+            Write-Host "  [PROXY] Body ($($body.Length) bytes): $($bodyStr.Substring(0, [Math]::Min(300, $bodyStr.Length)))" -ForegroundColor DarkYellow
             $reqStream = $webReq.GetRequestStream()
             $reqStream.Write($body, 0, $body.Length)
             $reqStream.Close()
