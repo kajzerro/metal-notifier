@@ -391,6 +391,19 @@ async function runValidation(){
     const testKeys=[...allPT].slice(0,3).join(',');
     log(`  [TEST] Running diagnostic queries…`,'info');
     try{
+      // Auth check — must succeed before any JQL query makes sense
+      const base=USE_PROXY?'/api/jira':JIRA_DIRECT;
+      const meResp=await fetch(`${base}/rest/api/3/myself`,{headers:jiraHeaders()});
+      const meText=await meResp.text();
+      if(meResp.ok){
+        let me={};try{me=JSON.parse(meText)}catch(e){}
+        log(`  [AUTH] ✓ Authenticated as: ${me.displayName||me.emailAddress||'(unknown)'} (${meResp.status})`,'success');
+      } else {
+        log(`  [AUTH] ✗ Auth FAILED — status ${meResp.status}: ${meText.substring(0,300)}`,'error');
+        log(`  [AUTH] Fix: check your Jira email and API token, then re-run`,'error');
+        throw new Error(`Jira auth failed (${meResp.status}). Check credentials.`);
+      }
+
       // Test 1: just key filter
       const t1=await jiraGet(`project = ${PROJECT_KEY} AND key in (${testKeys})`);
       log(`  [TEST] project + key only: ${t1.issues?.length||0} results`,'info');
@@ -409,7 +422,7 @@ async function runValidation(){
       // Test 4: full query
       const t4=await jiraGet(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
       log(`  [TEST] full query: ${t4.issues?.length||0} results`,'info');
-    }catch(e){log(`  [TEST] Error: ${e.message}`,'error')}
+    }catch(e){log(`  [TEST] Error: ${e.message}`,'error');throw e;}
 
     const jql1=buildJql([...allPT],team,cv,'accidental');
     if(jql1)log(`  JQL: ${jql1.substring(0,200)}${jql1.length>200?'…':''}`,'');
