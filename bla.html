@@ -331,7 +331,7 @@ async function jiraQueryIssues(jql){
     if(page===0){
       const topKeys=Object.keys(d);
       log(`  [DEBUG] Response keys: ${topKeys.join(', ')}`,'info');
-      log(`  [DEBUG] total: ${d.total}, issues count: ${(d.issues||[]).length}`,'info');
+      log(`  [DEBUG] isLast: ${d.isLast}, nextPageToken: ${d.nextPageToken||'none'}, issues count: ${(d.issues||[]).length}`,'info');
       if(d.issues&&d.issues.length>0){
         const sample=d.issues[0];
         log(`  [DEBUG] Sample: ${sample.key}`,'info');
@@ -353,7 +353,7 @@ async function jiraQueryIssues(jql){
 
 function buildJql(keys,team,currentVer,mode){
   if(keys.length===0)return null;
-  const kl=keys.map(k=>`"${k}"`).join(',');
+  const kl=keys.join(',');
   let jql=`project = ${PROJECT_KEY}`;
   if(team)jql+=` AND "Assigned Team" = "${team}"`;
   if(mode==='accidental')jql+=` AND (fixVersion is EMPTY OR fixVersion != "${currentVer}")`;
@@ -405,7 +405,7 @@ async function runValidation(){
     log(`═══ Phase 3: JIRA — accidental inclusions`,'info');setProgress(62);
 
     // Test query to verify connection and field names
-    const testKeys=[...allPT].slice(0,3).map(k=>`"${k}"`).join(',');
+    const testKeys=[...allPT].slice(0,3).join(',');
     log(`  [TEST] Running diagnostic queries…`,'info');
     try{
       // Test 1: just key filter
