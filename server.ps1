@@ -87,7 +87,12 @@ function Send-ProxyRequest($context, $targetBase, $prefixToStrip) {
         # Forward body for POST/PUT
         if ($req.HttpMethod -in @("POST", "PUT") -and $req.ContentLength64 -gt 0) {
             $body = New-Object byte[] $req.ContentLength64
-            $req.InputStream.Read($body, 0, $body.Length) | Out-Null
+            $offset = 0
+            while ($offset -lt $body.Length) {
+                $read = $req.InputStream.Read($body, $offset, $body.Length - $offset)
+                if ($read -eq 0) { break }
+                $offset += $read
+            }
             $webReq.ContentLength = $body.Length
             $reqStream = $webReq.GetRequestStream()
             $reqStream.Write($body, 0, $body.Length)
