@@ -277,8 +277,11 @@ function extractTickets(t){const m=t.match(TICKET_RE);return m?[...new Set(m)]:[
 function jiraHeaders(){return{'Authorization':'Basic '+btoa(getVal('jiraUser')+':'+getVal('jiraToken')),'Content-Type':'application/json','Accept':'application/json'}}
 function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const t=getVal('ghToken');if(t)h['Authorization']='token '+t;return h}
 async function jiraFetch(p){const r=await fetch(JIRA_BASE+p,{headers:jiraHeaders()});if(!r.ok)throw new Error(`JIRA ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
-async function jiraPost(jql,maxResults=10){
-  const resp=await fetch(JIRA_BASE+'/rest/api/3/search/jql',{method:'POST',headers:jiraHeaders(),body:JSON.stringify({query:jql,maxResults,fields:['key','summary','status','fixVersions','issuetype','assignee']})});
+async function jiraGet(jql,maxResults=10,nextPageToken=null){
+  const params=new URLSearchParams({jql,maxResults,fields:'key,summary,status,fixVersions,issuetype,assignee'});
+  if(nextPageToken)params.set('nextPageToken',nextPageToken);
+  const base=USE_PROXY?'/api/jira':JIRA_DIRECT;
+  const resp=await fetch(`${base}/rest/api/3/search/jql?${params}`,{headers:jiraHeaders()});
   if(!resp.ok)throw new Error(`JIRA ${resp.status}: ${(await resp.text()).substring(0,300)}`);
   return resp.json();
 }
@@ -310,29 +313,13 @@ async function jiraQueryIssues(jql){
   let nextPageToken=null;
   let page=0;
   do{
-    const body={query:jql,maxResults:100,fields:['key','summary','status','fixVersions','issuetype','assignee']};
-    if(nextPageToken)body.nextPageToken=nextPageToken;
-
-    const resp=await fetch((USE_PROXY?'/api/jira':JIRA_DIRECT)+'/rest/api/3/search/jql',{
-      method:'POST',
-      headers:{...jiraHeaders()},
-      body:JSON.stringify(body)
-    });
-    if(!resp.ok){
-      const errText=await resp.text();
-      throw new Error(`JIRA ${resp.status}: ${errText.substring(0,300)}`);
-    }
-    const rawText=await resp.text();
-    if(page===0)log(`  [DEBUG] Raw response (first 600 chars): ${rawText.substring(0,600)}`,'info');
-    const d=JSON.parse(rawText);
+    const d=await jiraGet(jql,100,nextPageToken);
 
     if(page===0){
       log(`  [DEBUG] Response keys: ${Object.keys(d).join(', ')}`,'info');
-      log(`  [DEBUG] isLast: ${d.isLast}, nextPageToken: ${d.nextPageToken||'none'}, issues count: ${(d.issues||[]).length}`,'info');
+      log(`  [DEBUG] isLast: ${d.isLast}, issues count: ${(d.issues||[]).length}`,'info');
       if(d.issues&&d.issues.length>0){
-        const sample=d.issues[0];
-        log(`  [DEBUG] Sample: ${sample.key}`,'info');
-        log(`  [DEBUG] fixVersions: ${JSON.stringify(sample.fields?.fixVersions)}`,'info');
+        log(`  [DEBUG] Sample: ${d.issues[0].key}, fixVersions: ${JSON.stringify(d.issues[0].fields?.fixVersions)}`,'info');
       }
     }
 
@@ -405,22 +392,22 @@ async function runValidation(){
     log(`  [TEST] Running diagnostic queries…`,'info');
     try{
       // Test 1: just key filter
-      const t1=await jiraPost(`project = ${PROJECT_KEY} AND key in (${testKeys})`);
+      const t1=await jiraGet(`project = ${PROJECT_KEY} AND key in (${testKeys})`);
       log(`  [TEST] project + key only: ${t1.issues?.length||0} results`,'info');
       if(t1.issues&&t1.issues[0]){
         log(`  [TEST] Sample: ${t1.issues[0].key} fixVersions=${JSON.stringify(t1.issues[0].fields?.fixVersions)}`,'info');
       }
 
       // Test 2: with team filter
-      const t2=await jiraPost(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND key in (${testKeys})`);
+      const t2=await jiraGet(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND key in (${testKeys})`);
       log(`  [TEST] + Assigned Team: ${t2.issues?.length||0} results`,'info');
 
       // Test 3: with fixVersion filter
-      const t3=await jiraPost(`project = ${PROJECT_KEY} AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
+      const t3=await jiraGet(`project = ${PROJECT_KEY} AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
       log(`  [TEST] + fixVersion filter: ${t3.issues?.length||0} results`,'info');
 
       // Test 4: full query
-      const t4=await jiraPost(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
+      const t4=await jiraGet(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
       log(`  [TEST] full query: ${t4.issues?.length||0} results`,'info');
     }catch(e){log(`  [TEST] Error: ${e.message}`,'error')}
 
