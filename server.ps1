@@ -84,15 +84,12 @@ function Send-ProxyRequest($context, $targetBase, $prefixToStrip) {
         }
         $webReq.ContentType = "application/json"
 
-        # Forward body for POST/PUT
-        if ($req.HttpMethod -in @("POST", "PUT") -and $req.ContentLength64 -gt 0) {
-            $body = New-Object byte[] $req.ContentLength64
-            $offset = 0
-            while ($offset -lt $body.Length) {
-                $read = $req.InputStream.Read($body, $offset, $body.Length - $offset)
-                if ($read -eq 0) { break }
-                $offset += $read
-            }
+        # Forward body for POST/PUT — read via stream so chunked encoding is handled too
+        if ($req.HttpMethod -in @("POST", "PUT")) {
+            $ms = New-Object System.IO.MemoryStream
+            $req.InputStream.CopyTo($ms)
+            $body = $ms.ToArray()
+            $ms.Close()
             $webReq.ContentLength = $body.Length
             $reqStream = $webReq.GetRequestStream()
             $reqStream.Write($body, 0, $body.Length)
