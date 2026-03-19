@@ -1,239 +1,563 @@
-<#
-  COMET Release Branch Validation — Local Server
-  PowerShell proxy: serves HTML + forwards API calls to JIRA/GitHub (no CORS issues)
-  No dependencies required — runs on any Windows PC.
-#>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COMET Release Branch Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #111827;
+    --bg-card: #1a2234;
+    --bg-input: #0f1629;
+    --border: #2a3654;
+    --border-focus: #4f8fff;
+    --text-primary: #e8ecf4;
+    --text-secondary: #8892a8;
+    --text-muted: #556178;
+    --accent: #4f8fff;
+    --accent-glow: rgba(79, 143, 255, 0.15);
+    --success: #34d399;
+    --success-bg: rgba(52, 211, 153, 0.08);
+    --success-border: rgba(52, 211, 153, 0.25);
+    --danger: #f87171;
+    --danger-bg: rgba(248, 113, 113, 0.08);
+    --danger-border: rgba(248, 113, 113, 0.25);
+    --warning: #fbbf24;
+    --warning-bg: rgba(251, 191, 36, 0.08);
+    --warning-border: rgba(251, 191, 36, 0.25);
+    --info-bg: rgba(79, 143, 255, 0.08);
+    --info-border: rgba(79, 143, 255, 0.25);
+    --font-body: 'DM Sans', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font-body); background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.6; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .app-shell { max-width: 1200px; margin: 0 auto; padding: 32px 24px 80px; }
+  .app-header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; }
+  .app-logo { width: 44px; height: 44px; background: linear-gradient(135deg, #2684ff, #0052cc); border-radius: var(--radius); display: grid; place-items: center; font-size: 18px; font-weight: 700; color: white; flex-shrink: 0; box-shadow: 0 0 24px rgba(38, 132, 255, 0.3); }
+  .app-title { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  .app-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 1px; }
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 720px) { .config-grid { grid-template-columns: 1fr; } }
+  .config-full { grid-column: 1 / -1; }
+  .config-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .config-card h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-secondary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .config-card h2 .icon { width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center; font-size: 11px; }
+  .jira-icon { background: #2684ff22; color: #2684ff; }
+  .gh-icon { background: #8b949e22; color: #8b949e; }
+  .release-icon { background: #a78bfa22; color: #a78bfa; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 5px; }
+  .field input, .field select { width: 100%; padding: 9px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-mono); font-size: 13px; transition: border-color 0.2s, box-shadow 0.2s; outline: none; }
+  .field input::placeholder { color: var(--text-muted); font-family: var(--font-body); }
+  .field input:focus, .field select:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .field .hint { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .token-field-wrap { position: relative; }
+  .token-field-wrap input { padding-right: 42px; }
+  .token-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; line-height: 1; }
+  .repo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .repo-chip { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); cursor: pointer; transition: all 0.15s; user-select: none; }
+  .repo-chip:hover { border-color: var(--accent); color: var(--text-primary); }
+  .repo-chip.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+  .repo-select-all { font-size: 11px; color: var(--accent); cursor: pointer; background: none; border: none; font-family: var(--font-body); margin-top: 6px; padding: 0; }
+  .repo-select-all:hover { text-decoration: underline; }
+  .team-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .team-chip { padding: 5px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; user-select: none; }
+  .team-chip:hover { border-color: var(--accent); color: var(--text-primary); }
+  .team-chip.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+  .actions { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 24px; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: linear-gradient(135deg, #2684ff, #0052cc); color: white; box-shadow: 0 2px 12px rgba(38,132,255,0.3); }
+  .btn-primary:hover:not(:disabled) { box-shadow: 0 4px 20px rgba(38,132,255,0.45); transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-secondary { background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--text-muted); color: var(--text-primary); }
+  .btn .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 20px; overflow: hidden; display: none; }
+  .progress-bar.active { display: block; }
+  .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #2684ff, #a78bfa); border-radius: 2px; transition: width 0.4s ease; width: 0%; }
+  .status-log { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; max-height: 500px; overflow-y: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.8; display: none; }
+  .status-log.active { display: block; }
+  .log-entry { color: var(--text-muted); }
+  .log-entry.info { color: var(--accent); }
+  .log-entry.success { color: var(--success); }
+  .log-entry.error { color: var(--danger); }
+  .log-entry .timestamp { color: var(--text-muted); margin-right: 8px; }
+  .results { display: none; }
+  .results.active { display: block; }
+  .gate-verdict { padding: 18px 22px; border-radius: var(--radius); margin-bottom: 24px; display: flex; align-items: center; gap: 16px; font-weight: 600; font-size: 15px; }
+  .gate-verdict.pass { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); }
+  .gate-verdict.fail { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); }
+  .gate-verdict .verdict-icon { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; flex-shrink: 0; }
+  .gate-verdict.pass .verdict-icon { background: rgba(52,211,153,0.15); }
+  .gate-verdict.fail .verdict-icon { background: rgba(248,113,113,0.15); }
+  .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .summary-card { padding: 16px 18px; border-radius: var(--radius); border: 1px solid; }
+  .summary-card.pass { background: var(--success-bg); border-color: var(--success-border); }
+  .summary-card.fail { background: var(--danger-bg); border-color: var(--danger-border); }
+  .summary-card.warn { background: var(--warning-bg); border-color: var(--warning-border); }
+  .summary-card.info { background: var(--info-bg); border-color: var(--info-border); }
+  .summary-card .num { font-size: 26px; font-weight: 700; font-family: var(--font-mono); line-height: 1; margin-bottom: 4px; }
+  .summary-card.pass .num { color: var(--success); }
+  .summary-card.fail .num { color: var(--danger); }
+  .summary-card.warn .num { color: var(--warning); }
+  .summary-card.info .num { color: var(--accent); }
+  .summary-card .label { font-size: 11px; font-weight: 500; color: var(--text-secondary); }
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab-btn { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text-muted); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; margin-bottom: -1px; font-family: var(--font-body); white-space: nowrap; }
+  .tab-btn:hover { color: var(--text-secondary); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .result-table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; }
+  .result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .result-table th { text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
+  .result-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+  .result-table tr:last-child td { border-bottom: none; }
+  .result-table tr:hover td { background: rgba(79,143,255,0.03); }
+  .ticket-key { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none; }
+  .ticket-key:hover { text-decoration: underline; }
+  .status-pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .status-pill.done { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+  .status-pill.progress { background: var(--info-bg); color: var(--accent); border: 1px solid var(--info-border); }
+  .status-pill.todo { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
+  .version-tag { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); background: var(--bg-input); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); display: inline-block; margin: 1px 2px; }
+  .repo-tag { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px; display: inline-block; margin: 1px 2px; }
+  .empty-state { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; }
+  .badge { font-size: 11px; font-family: var(--font-mono); padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .badge-red { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+  .badge-green { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+  .badge-blue { background: var(--info-bg); color: var(--accent); border: 1px solid var(--info-border); }
+  .section-divider { border: none; border-top: 1px solid var(--border); margin: 8px 0 14px; }
+  .save-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .save-row label { font-size: 12px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .save-row input[type="checkbox"] { accent-color: var(--accent); }
+  .cors-notice { background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; display: none; }
+  .cors-notice strong { color: var(--warning); }
+  .cors-notice code { background: var(--bg-input); padding: 1px 6px; border-radius: 3px; font-family: var(--font-mono); font-size: 12px; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .animate-in { animation: fadeIn 0.35s ease-out; }
+  .mode-description { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-top: 8px; padding: 10px 12px; background: var(--bg-input); border-radius: var(--radius-sm); border-left: 3px solid var(--accent); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="app-header animate-in">
+    <div class="app-logo">C</div>
+    <div>
+      <div class="app-title">COMET Release Branch Validation</div>
+      <div class="app-subtitle">Verify CRD tickets against GitHub release branches · github.com/cg-ict · capitalgroup.atlassian.net</div>
+    </div>
+  </div>
+  <div class="cors-notice" id="corsNotice">
+    <strong>⚠ Important:</strong> This tool must be run via the included launcher to work.
+    <br>Double-click <code>start.bat</code> — it starts a local proxy server using PowerShell (built into Windows, no installs needed).
+    <br>The proxy forwards API calls to JIRA and GitHub, avoiding browser CORS restrictions.
+  </div>
+  <div class="config-grid">
+    <div class="config-card animate-in" style="animation-delay:0.05s">
+      <h2><span class="icon jira-icon">J</span> JIRA Credentials</h2>
+      <div class="field">
+        <label>Email</label>
+        <input type="text" id="jiraUser" placeholder="your.name@capgroup.com">
+      </div>
+      <div class="field">
+        <label>API Token</label>
+        <div class="token-field-wrap">
+          <input type="password" id="jiraToken" placeholder="Paste your Atlassian API token">
+          <button class="token-toggle" onclick="toggleVis('jiraToken',this)">👁</button>
+        </div>
+        <div class="hint">Generate at <em>id.atlassian.com/manage-profile/security/api-tokens</em></div>
+      </div>
+      <hr class="section-divider">
+      <h2 style="margin-top:4px"><span class="icon gh-icon">G</span> GitHub Token</h2>
+      <div class="field">
+        <label>Personal Access Token (classic)</label>
+        <div class="token-field-wrap">
+          <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx">
+          <button class="token-toggle" onclick="toggleVis('ghToken',this)">👁</button>
+        </div>
+        <div class="hint">Needs <code>repo</code> scope + SSO configured for <code>cg-ict</code></div>
+      </div>
+      <div class="save-row">
+        <label><input type="checkbox" id="saveConfig" checked> Remember tokens in this browser</label>
+      </div>
+    </div>
+    <div class="config-card animate-in" style="animation-delay:0.1s">
+      <h2><span class="icon release-icon">R</span> Release Details</h2>
+      <div class="inline-fields">
+        <div class="field">
+          <label>Current Release Version</label>
+          <input type="text" id="currentVersion" placeholder="26.1.3">
+          <div class="hint">Used as fixVersion in JQL and release/{version} for branches</div>
+        </div>
+        <div class="field">
+          <label>Previous Release Version</label>
+          <input type="text" id="previousVersion" placeholder="26.1.2">
+        </div>
+      </div>
+      <div class="field">
+        <label>Assigned Team (JQL filter)</label>
+        <input type="text" id="teamName" value="Order Management &amp; ETF">
+      </div>
+    </div>
+    <div class="config-card config-full animate-in" style="animation-delay:0.15s">
+      <h2><span class="icon gh-icon">G</span> CRD Repositories <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);margin-left:4px">(github.com/cg-ict)</span></h2>
+      <div class="repo-chips" id="repoChips"></div>
+      <button class="repo-select-all" onclick="toggleAllRepos()">Select / Deselect All</button>
+      <div class="mode-description" style="margin-top:12px">
+        <strong>Two checks per repository:</strong><br>
+        1. <strong>vs Previous Release</strong> — <code>release/{prev}</code> → <code>release/{current}</code> — finds commits with tickets that have wrong/empty Fix Version (accidental inclusions)<br>
+        2. <strong>vs project/comet</strong> — <code>release/{current}</code> → <code>project/comet</code> — finds tickets assigned to current release that are in project/comet but may be missing from the release branch
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" id="runBtn" onclick="runValidation()">
+      <span id="runBtnText">▶ Run Validation</span>
+      <span id="runBtnSpinner" class="spinner" style="display:none;"></span>
+    </button>
+    <button class="btn btn-secondary" onclick="runMockDemo()">🧪 Demo</button>
+    <button class="btn btn-secondary" onclick="document.getElementById('corsNotice').style.display='block'">ℹ CORS Help</button>
+    <button class="btn btn-secondary" onclick="exportResults()">⤓ Export</button>
+    <button class="btn btn-secondary" onclick="copyEmailBody()">✉ Copy Email</button>
+  </div>
+  <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+  <div class="status-log" id="statusLog"></div>
+  <div class="results" id="results">
+    <div id="gateVerdict"></div>
+    <div class="summary-cards" id="summaryCards"></div>
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" onclick="switchTab('accidental')">Accidental Inclusions</button>
+      <button class="tab-btn" onclick="switchTab('missing')">Missing from Release</button>
+      <button class="tab-btn" onclick="switchTab('allTickets')">All Tickets in Branch</button>
+      <button class="tab-btn" onclick="switchTab('byRepo')">By Repository</button>
+    </div>
+    <div class="tab-panel active" id="panel-accidental"></div>
+    <div class="tab-panel" id="panel-missing"></div>
+    <div class="tab-panel" id="panel-allTickets"></div>
+    <div class="tab-panel" id="panel-byRepo"></div>
+  </div>
+</div>
+<script>
+const JIRA_DIRECT='https://capitalgroup.atlassian.net',GH_DIRECT='https://api.github.com',GH_OWNER='cg-ict',PROJECT_KEY='CRD',TICKET_RE=/CRD-\d+/g,STABLE_BRANCH='project/comet';
+// Use local proxy if served from localhost (avoids CORS), otherwise direct
+const USE_PROXY=location.hostname==='localhost'||location.hostname==='127.0.0.1';
+const JIRA_BASE=USE_PROXY?'/api/jira':JIRA_DIRECT;
+const GH_API=USE_PROXY?'/api/github':GH_DIRECT;
+const CRD_REPOS=['comet-autosys','comet-op-clientaddins','comet-op-database','comet-op-dbadmin','comet-op-middletier','comet-op-mtplugins','comet-op-powercenter','comet-op-services'];
+let verificationResult=null,selectedRepos=new Set(CRD_REPOS);
 
-$Port = 8090
-$Prefix = "http://localhost:$Port/"
+function initRepoChips(){const c=document.getElementById('repoChips');c.innerHTML='';for(const r of CRD_REPOS){const ch=document.createElement('div');ch.className='repo-chip active';ch.dataset.repo=r;ch.innerHTML=`<span class="check">✓</span> ${r}`;ch.addEventListener('click',()=>{if(selectedRepos.has(r)){selectedRepos.delete(r);ch.classList.remove('active')}else{selectedRepos.add(r);ch.classList.add('active')}});c.appendChild(ch)}}
+initRepoChips();
+function toggleAllRepos(){const a=selectedRepos.size===CRD_REPOS.length;document.querySelectorAll('.repo-chip').forEach(ch=>{const r=ch.dataset.repo;if(a){selectedRepos.delete(r);ch.classList.remove('active')}else{selectedRepos.add(r);ch.classList.add('active')}})}
 
-# Get script directory to serve files from
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $ScriptDir) { $ScriptDir = Get-Location }
+function saveConfig(){if(!document.getElementById('saveConfig').checked)return;const f=['jiraUser','jiraToken','ghToken','currentVersion','previousVersion','teamName'],d={};f.forEach(k=>d[k]=document.getElementById(k).value);try{localStorage.setItem('cometCfg',JSON.stringify(d))}catch(e){}}
+function loadConfig(){try{const r=localStorage.getItem('cometCfg');if(!r)return;const d=JSON.parse(r);Object.entries(d).forEach(([k,v])=>{const el=document.getElementById(k);if(el&&v)el.value=v})}catch(e){}}
+loadConfig();
 
-Write-Host ""
-Write-Host "  ================================================" -ForegroundColor Cyan
-Write-Host "   COMET Release Branch Validation" -ForegroundColor White
-Write-Host "   Local server with JIRA/GitHub proxy" -ForegroundColor Gray
-Write-Host "  ================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  Server running at:  " -NoNewline
-Write-Host "http://localhost:$Port" -ForegroundColor Green
-Write-Host "  Opening browser..." -ForegroundColor Gray
-Write-Host ""
-Write-Host "  API proxy routes:"
-Write-Host "    /api/jira/*    ->  capitalgroup.atlassian.net" -ForegroundColor DarkGray
-Write-Host "    /api/github/*  ->  api.github.com" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  Press Ctrl+C to stop." -ForegroundColor Yellow
-Write-Host ""
+function toggleVis(id,btn){const el=document.getElementById(id);if(el.type==='password'){el.type='text';btn.textContent='🔒'}else{el.type='password';btn.textContent='👁'}}
+function log(msg,level=''){const l=document.getElementById('statusLog');l.classList.add('active');const e=document.createElement('div');e.className='log-entry '+level;e.innerHTML=`<span class="timestamp">${new Date().toLocaleTimeString()}</span>${esc(msg)}`;l.appendChild(e);l.scrollTop=l.scrollHeight}
+function setProgress(p){document.getElementById('progressBar').classList.add('active');document.getElementById('progressFill').style.width=p+'%'}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function getVal(id){return document.getElementById(id).value.trim()}
+function extractTickets(t){const m=t.match(TICKET_RE);return m?[...new Set(m)]:[]}
 
-# Allow self-signed / corporate certs
-Add-Type @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class TrustAll : ICertificatePolicy {
-    public bool CheckValidationResult(ServicePoint sp, X509Certificate cert, WebRequest req, int problem) { return true; }
+function jiraHeaders(){return{'Authorization':'Basic '+btoa(getVal('jiraUser')+':'+getVal('jiraToken')),'Content-Type':'application/json','Accept':'application/json'}}
+function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const t=getVal('ghToken');if(t)h['Authorization']='token '+t;return h}
+async function jiraFetch(p){const r=await fetch(JIRA_BASE+p,{headers:jiraHeaders()});if(!r.ok)throw new Error(`JIRA ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
+async function jiraGet(jql,maxResults=10,nextPageToken=null){
+  const params=new URLSearchParams({jql,maxResults,fields:'key,summary,status,fixVersions,issuetype,assignee'});
+  if(nextPageToken)params.set('nextPageToken',nextPageToken);
+  const base=USE_PROXY?'/api/jira':JIRA_DIRECT;
+  const resp=await fetch(`${base}/rest/api/3/search/jql?${params}`,{headers:jiraHeaders()});
+  if(!resp.ok)throw new Error(`JIRA ${resp.status}: ${(await resp.text()).substring(0,300)}`);
+  return resp.json();
 }
-"@
-[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAll
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+async function ghFetch(p){const r=await fetch(GH_API+p,{headers:ghHeaders()});if(!r.ok)throw new Error(`GitHub ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
 
-# MIME types
-$MimeTypes = @{
-    ".html" = "text/html; charset=utf-8"
-    ".js"   = "application/javascript"
-    ".css"  = "text/css"
-    ".json" = "application/json"
-    ".png"  = "image/png"
-    ".ico"  = "image/x-icon"
-    ".svg"  = "image/svg+xml"
-}
-
-function Get-MimeType($path) {
-    $ext = [System.IO.Path]::GetExtension($path).ToLower()
-    if ($MimeTypes.ContainsKey($ext)) { return $MimeTypes[$ext] }
-    return "application/octet-stream"
-}
-
-function Send-ProxyRequest($context, $targetBase, $prefixToStrip) {
-    $req = $context.Request
-    $resp = $context.Response
-
-    # Build target URL
-    $localPath = $req.Url.PathAndQuery
-    $stripped = $localPath.Substring($prefixToStrip.Length)
-    $targetUrl = "$targetBase/$stripped"
-
-    try {
-        $webReq = [System.Net.HttpWebRequest]::Create($targetUrl)
-        $webReq.Method = $req.HttpMethod
-        $webReq.Timeout = 30000
-        $webReq.UserAgent = "COMET-ReleaseGate/1.0"
-
-        # Forward key headers
-        foreach ($header in @("Authorization", "Accept")) {
-            $val = $req.Headers[$header]
-            if ($val) {
-                if ($header -eq "Authorization") {
-                    $webReq.Headers["Authorization"] = $val
-                } elseif ($header -eq "Accept") {
-                    $webReq.Accept = $val
-                }
-            }
-        }
-        $webReq.ContentType = "application/json"
-
-        # Forward body for POST/PUT — read via stream so chunked encoding is handled too
-        if ($req.HttpMethod -in @("POST", "PUT")) {
-            $ms = New-Object System.IO.MemoryStream
-            $req.InputStream.CopyTo($ms)
-            $body = $ms.ToArray()
-            $ms.Close()
-            $webReq.ContentLength = $body.Length
-            $bodyStr = [System.Text.Encoding]::UTF8.GetString($body)
-            Write-Host "  [PROXY] Body ($($body.Length) bytes): $($bodyStr.Substring(0, [Math]::Min(300, $bodyStr.Length)))" -ForegroundColor DarkYellow
-            $reqStream = $webReq.GetRequestStream()
-            $reqStream.Write($body, 0, $body.Length)
-            $reqStream.Close()
-        }
-
-        # Get response
-        $webResp = $webReq.GetResponse()
-        $respStream = $webResp.GetResponseStream()
-        $reader = New-Object System.IO.MemoryStream
-        $respStream.CopyTo($reader)
-        $respBytes = $reader.ToArray()
-        $reader.Close()
-        $respStream.Close()
-
-        $resp.StatusCode = [int]$webResp.StatusCode
-        $resp.ContentType = $webResp.ContentType
-        $resp.AddHeader("Access-Control-Allow-Origin", "*")
-        $resp.OutputStream.Write($respBytes, 0, $respBytes.Length)
-        $webResp.Close()
-
-        Write-Host "  [PROXY] $($req.HttpMethod) $stripped -> $([int]$webResp.StatusCode)" -ForegroundColor DarkGray
+async function getTicketsFromCompare(repo,base,head){
+  const path=`/repos/${GH_OWNER}/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`;
+  try{
+    const info=await ghFetch(path+'?per_page=1');
+    const total=info.total_commits||0;
+    if(total===0)return{tickets:new Set(),commits:[],total:0};
+    const full=await ghFetch(path+'?per_page=250');
+    const commits=full.commits||[];
+    const tickets=new Set();const allC=[];
+    for(const c of commits){
+      const msg=c.commit?.message||'';
+      const found=extractTickets(msg);found.forEach(t=>tickets.add(t));
+      allC.push({sha:(c.sha||'').substring(0,7),message:msg.split('\n')[0].substring(0,120),author:c.commit?.author?.name||'unknown',date:c.commit?.author?.date||'',tickets:found,repo});
     }
-    catch [System.Net.WebException] {
-        $errResp = $_.Exception.Response
-        if ($errResp) {
-            $errStream = $errResp.GetResponseStream()
-            $errReader = New-Object System.IO.StreamReader($errStream)
-            $errBody = $errReader.ReadToEnd()
-            $errReader.Close()
-
-            $resp.StatusCode = [int]$errResp.StatusCode
-            $resp.ContentType = "application/json"
-            $resp.AddHeader("Access-Control-Allow-Origin", "*")
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($errBody)
-            $resp.OutputStream.Write($bytes, 0, $bytes.Length)
-
-            Write-Host "  [PROXY] $($req.HttpMethod) $stripped -> $([int]$errResp.StatusCode)" -ForegroundColor Red
-        } else {
-            $resp.StatusCode = 502
-            $resp.ContentType = "application/json"
-            $resp.AddHeader("Access-Control-Allow-Origin", "*")
-            $errMsg = "{`"error`": `"$($_.Exception.Message)`"}"
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($errMsg)
-            $resp.OutputStream.Write($bytes, 0, $bytes.Length)
-
-            Write-Host "  [PROXY] $($req.HttpMethod) $stripped -> 502 $($_.Exception.Message)" -ForegroundColor Red
-        }
-    }
-    catch {
-        $resp.StatusCode = 502
-        $resp.ContentType = "application/json"
-        $resp.AddHeader("Access-Control-Allow-Origin", "*")
-        $errMsg = "{`"error`": `"$($_.Exception.Message)`"}"
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($errMsg)
-        $resp.OutputStream.Write($bytes, 0, $bytes.Length)
-
-        Write-Host "  [PROXY] ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    }
-    finally {
-        $resp.Close()
-    }
+    return{tickets,commits:allC,total};
+  }catch(e){
+    if(e.message.includes('404')){log(`  ${repo}: branch not found or identical — skipping`,'error');return{tickets:new Set(),commits:[],total:0}}
+    throw e;
+  }
 }
 
-function Send-StaticFile($context, $filePath) {
-    $resp = $context.Response
-    $fullPath = Join-Path $ScriptDir $filePath
+async function jiraQueryIssues(jql){
+  const all=[];
+  let nextPageToken=null;
+  let page=0;
+  do{
+    const d=await jiraGet(jql,100,nextPageToken);
 
-    if (-not (Test-Path $fullPath)) {
-        $resp.StatusCode = 404
-        $resp.Close()
-        return
+    if(page===0){
+      log(`  [DEBUG] Response keys: ${Object.keys(d).join(', ')}`,'info');
+      log(`  [DEBUG] isLast: ${d.isLast}, issues count: ${(d.issues||[]).length}`,'info');
+      if(d.issues&&d.issues.length>0){
+        log(`  [DEBUG] Sample: ${d.issues[0].key}, fixVersions: ${JSON.stringify(d.issues[0].fields?.fixVersions)}`,'info');
+      }
     }
 
-    $bytes = [System.IO.File]::ReadAllBytes($fullPath)
-    $resp.ContentType = Get-MimeType $fullPath
-    $resp.ContentLength64 = $bytes.Length
-    $resp.AddHeader("Access-Control-Allow-Origin", "*")
-    $resp.OutputStream.Write($bytes, 0, $bytes.Length)
-    $resp.Close()
+    const batch=d.issues||[];
+    all.push(...batch);
+    nextPageToken=d.nextPageToken||null;
+    page++;
+    if(page>20)break;
+  }while(nextPageToken);
+
+  log(`  [DEBUG] Total issues retrieved: ${all.length}`,'info');
+  return all;
 }
 
-# Start listener
-$listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add($Prefix)
-
-try {
-    $listener.Start()
-}
-catch {
-    Write-Host "  ERROR: Could not start server on port $Port." -ForegroundColor Red
-    Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "  Try closing other applications using port $Port, or run as Administrator." -ForegroundColor Yellow
-    Read-Host "  Press Enter to exit"
-    exit 1
+function buildJql(keys,team,currentVer,mode){
+  if(keys.length===0)return null;
+  const kl=keys.join(',');
+  let jql=`project = ${PROJECT_KEY}`;
+  if(team)jql+=` AND "Assigned Team" = "${team}"`;
+  if(mode==='accidental')jql+=` AND (fixVersion is EMPTY OR fixVersion != "${currentVer}")`;
+  else jql+=` AND fixVersion = "${currentVer}"`;
+  jql+=` AND key in (${kl})`;
+  return jql;
 }
 
-# Open browser
-Start-Process "http://localhost:$Port/release-gate.html"
+function findRepos(key,map,field){return Object.entries(map).filter(([r,d])=>d[field]&&d[field].includes(key)).map(([r])=>r)}
 
-# Main loop
-try {
-    while ($listener.IsListening) {
-        $context = $listener.GetContext()
-        $req = $context.Request
-        $path = $req.Url.AbsolutePath
-
-        # Handle CORS preflight
-        if ($req.HttpMethod -eq "OPTIONS") {
-            $context.Response.StatusCode = 200
-            $context.Response.AddHeader("Access-Control-Allow-Origin", "*")
-            $context.Response.AddHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-            $context.Response.AddHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
-            $context.Response.AddHeader("Access-Control-Max-Age", "86400")
-            $context.Response.Close()
-            continue
-        }
-
-        # Route requests
-        if ($path.StartsWith("/api/jira/")) {
-            Send-ProxyRequest $context "https://capitalgroup.atlassian.net" "/api/jira/"
-        }
-        elseif ($path.StartsWith("/api/github/")) {
-            Send-ProxyRequest $context "https://api.github.com" "/api/github/"
-        }
-        elseif ($path -eq "/") {
-            # Redirect root to the app
-            $context.Response.Redirect("/release-gate.html")
-            $context.Response.Close()
-        }
-        else {
-            # Serve static file
-            $filePath = $path.TrimStart("/")
-            Send-StaticFile $context $filePath
-        }
+async function runValidation(){
+  if(!getVal('jiraUser')||!getVal('jiraToken')){alert('Enter JIRA email and API token');return}
+  if(!getVal('ghToken')){alert('Enter GitHub token');return}
+  if(!getVal('currentVersion')){alert('Enter current release version');return}
+  if(!getVal('previousVersion')){alert('Enter previous release version');return}
+  if(selectedRepos.size===0){alert('Select at least one repo');return}
+  saveConfig();
+  const btn=document.getElementById('runBtn');btn.disabled=true;
+  document.getElementById('runBtnText').textContent='Running…';
+  document.getElementById('runBtnSpinner').style.display='block';
+  document.getElementById('statusLog').innerHTML='';
+  document.getElementById('results').classList.remove('active');
+  setProgress(0);
+  const cv=getVal('currentVersion'),pv=getVal('previousVersion'),team=getVal('teamName'),repos=[...selectedRepos];
+  const rb=`release/${cv}`,pb=`release/${pv}`;
+  log(`Fix Version (current): "${cv}"  |  Fix Version (previous): "${pv}"`,'info');
+  log(`Branch (current): ${rb}  |  Branch (previous): ${pb}`,'info');
+  try{
+    log(`═══ Phase 1: ${pb} → ${rb} (accidental inclusions)`,'info');
+    let allPT=new Set(),allPC=[],rtm={};
+    for(let i=0;i<repos.length;i++){
+      const r=repos[i];log(`  [${i+1}/${repos.length}] ${r}`,'info');setProgress(5+(i/repos.length)*30);
+      const res=await getTicketsFromCompare(r,pb,rb);res.tickets.forEach(t=>allPT.add(t));allPC.push(...res.commits);
+      rtm[r]={prevComparison:[...res.tickets],prevCommits:res.commits};
+      log(`  ${r}: ${res.total} commits, ${res.tickets.size} CRD tickets`,'success');
     }
+    log(`Phase 1 done: ${allPT.size} unique tickets`,'success');
+
+    log(`═══ Phase 2: ${rb} → ${STABLE_BRANCH} (missing from release)`,'info');
+    let allCT=new Set(),allCC=[];
+    for(let i=0;i<repos.length;i++){
+      const r=repos[i];log(`  [${i+1}/${repos.length}] ${r}`,'info');setProgress(35+(i/repos.length)*25);
+      const res=await getTicketsFromCompare(r,rb,STABLE_BRANCH);res.tickets.forEach(t=>allCT.add(t));allCC.push(...res.commits);
+      if(!rtm[r])rtm[r]={};rtm[r].cometComparison=[...res.tickets];rtm[r].cometCommits=res.commits;
+      log(`  ${r}: ${res.total} commits, ${res.tickets.size} CRD tickets`,'success');
+    }
+    log(`Phase 2 done: ${allCT.size} unique tickets`,'success');
+
+    log(`═══ Phase 3: JIRA — accidental inclusions`,'info');setProgress(62);
+
+    // Test query to verify connection and field names
+    const testKeys=[...allPT].slice(0,3).join(',');
+    log(`  [TEST] Running diagnostic queries…`,'info');
+    try{
+      // Test 1: just key filter
+      const t1=await jiraGet(`project = ${PROJECT_KEY} AND key in (${testKeys})`);
+      log(`  [TEST] project + key only: ${t1.issues?.length||0} results`,'info');
+      if(t1.issues&&t1.issues[0]){
+        log(`  [TEST] Sample: ${t1.issues[0].key} fixVersions=${JSON.stringify(t1.issues[0].fields?.fixVersions)}`,'info');
+      }
+
+      // Test 2: with team filter
+      const t2=await jiraGet(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND key in (${testKeys})`);
+      log(`  [TEST] + Assigned Team: ${t2.issues?.length||0} results`,'info');
+
+      // Test 3: with fixVersion filter
+      const t3=await jiraGet(`project = ${PROJECT_KEY} AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
+      log(`  [TEST] + fixVersion filter: ${t3.issues?.length||0} results`,'info');
+
+      // Test 4: full query
+      const t4=await jiraGet(`project = ${PROJECT_KEY} AND "Assigned Team" = "${team}" AND (fixVersion is EMPTY OR fixVersion != "${cv}") AND key in (${testKeys})`);
+      log(`  [TEST] full query: ${t4.issues?.length||0} results`,'info');
+    }catch(e){log(`  [TEST] Error: ${e.message}`,'error')}
+
+    const jql1=buildJql([...allPT],team,cv,'accidental');
+    if(jql1)log(`  JQL: ${jql1.substring(0,200)}${jql1.length>200?'…':''}`,'');
+    let accIssues=jql1?await jiraQueryIssues(jql1):[];
+    log(`  Found ${accIssues.length} with unexpected Fix Version`,accIssues.length>0?'error':'success');
+
+    log(`═══ Phase 4: JIRA — missing from release`,'info');setProgress(78);
+    const jql2=buildJql([...allCT],team,cv,'missing');
+    if(jql2)log(`  JQL: ${jql2.substring(0,200)}${jql2.length>200?'…':''}`,'');
+    let missIssues=jql2?await jiraQueryIssues(jql2):[];
+    log(`  Found ${missIssues.length} potentially missing`,missIssues.length>0?'error':'success');
+
+    // ── DIAGNOSTIC: Dump ALL fields for first accidental issue ──
+    if(accIssues.length>0){
+      const testKey=accIssues[0].key;
+      log(`═══ DIAGNOSTIC: Dumping ALL fields for ${testKey}`,'info');
+      setProgress(88);
+      try{
+        const fullIssue=await jiraFetch(`/rest/api/3/issue/${testKey}`);
+        const fields=fullIssue.fields||{};
+        const keys=Object.keys(fields).sort();
+        log(`  Total fields: ${keys.length}`,'info');
+        for(const key of keys){
+          const val=fields[key];
+          if(val===null||val===undefined){
+            continue; // skip nulls to reduce noise
+          }
+          const str=JSON.stringify(val);
+          if(str==='""'||str==='0'||str==='false'||str==='[]')continue; // skip empty
+          // Truncate long values
+          const display=str.length>300?str.substring(0,300)+'…':str;
+          log(`  ${key} = ${display}`,'');
+        }
+      }catch(e){log(`  Fetch failed: ${e.message}`,'error')}
+    }
+
+    setProgress(100);log('✓ Validation complete!','success');
+
+    const mapIssue=(i,field)=>({key:i.key,summary:i.fields?.summary||'',status:i.fields?.status?.name||'',type:i.fields?.issuetype?.name||'',assignee:i.fields?.assignee?.displayName||'Unassigned',fixVersions:(i.fields?.fixVersions||[]).map(v=>v.name),repos:findRepos(i.key,rtm,field)});
+
+    verificationResult={timestamp:new Date().toISOString(),config:{currentVersion:cv,previousVersion:pv,currentBranch:rb,previousBranch:pb,team,repos},
+      stats:{totalTicketsPrevComparison:allPT.size,totalTicketsCometComparison:allCT.size,accidental:accIssues.length,missing:missIssues.length,reposScanned:repos.length},
+      accidental:accIssues.map(i=>mapIssue(i,'prevComparison')),missing:missIssues.map(i=>mapIssue(i,'cometComparison')),
+      allPrevTickets:[...allPT],allCometTickets:[...allCT],repoTicketMap:rtm};
+    renderResults(verificationResult);
+  }catch(err){
+    log(`ERROR: ${err.message}`,'error');console.error(err);
+    if(err.message.includes('Failed to fetch')||err.message.includes('NetworkError')){log('CORS issue? Click CORS Help.','error');document.getElementById('corsNotice').style.display='block'}
+  }finally{btn.disabled=false;document.getElementById('runBtnText').textContent='▶ Run Validation';document.getElementById('runBtnSpinner').style.display='none'}
 }
-catch {
-    # Ctrl+C or error
+
+function renderResults(r){
+  const el=document.getElementById('results');el.classList.add('active');
+  const ok=r.stats.accidental===0&&r.stats.missing===0;
+  document.getElementById('gateVerdict').innerHTML=`<div class="gate-verdict ${ok?'pass':'fail'} animate-in"><div class="verdict-icon">${ok?'✓':'✗'}</div><div><strong>RELEASE GATE: ${ok?'PASSED':'FAILED'}</strong><div style="font-weight:400;font-size:13px;opacity:0.8;margin-top:2px">${ok?`All checks passed across ${r.stats.reposScanned} repositories.`:`${r.stats.accidental>0?r.stats.accidental+' accidental inclusion(s). ':''}${r.stats.missing>0?r.stats.missing+' ticket(s) potentially missing.':''}`}</div></div></div>`;
+  document.getElementById('summaryCards').innerHTML=`
+    <div class="summary-card info animate-in"><div class="num">${r.stats.reposScanned}</div><div class="label">Repos Scanned</div></div>
+    <div class="summary-card info animate-in"><div class="num">${r.stats.totalTicketsPrevComparison}</div><div class="label">Tickets in Release Diff</div></div>
+    <div class="summary-card ${r.stats.accidental===0?'pass':'fail'} animate-in"><div class="num">${r.stats.accidental}</div><div class="label">Accidental Inclusions</div></div>
+    <div class="summary-card ${r.stats.missing===0?'pass':'fail'} animate-in"><div class="num">${r.stats.missing}</div><div class="label">Missing from Release</div></div>`;
+  const tabs=document.querySelectorAll('#tabBar .tab-btn');
+  tabs[0].innerHTML=`Accidental Inclusions <span class="badge ${r.stats.accidental>0?'badge-red':'badge-green'}" style="margin-left:6px">${r.stats.accidental}</span>`;
+  tabs[1].innerHTML=`Missing from Release <span class="badge ${r.stats.missing>0?'badge-red':'badge-green'}" style="margin-left:6px">${r.stats.missing}</span>`;
+  tabs[2].innerHTML=`All Tickets in Branch <span class="badge badge-blue" style="margin-left:6px">${r.stats.totalTicketsPrevComparison}</span>`;
+  renderIssueTable('panel-accidental',r.accidental,'No accidental inclusions — all tickets have correct Fix Version.');
+  renderIssueTable('panel-missing',r.missing,'No missing tickets — all current release tickets are in the release branch.');
+  renderAllTickets(r);renderByRepo(r);
+  switchTab(r.stats.accidental>0?'accidental':r.stats.missing>0?'missing':'accidental');
+  el.scrollIntoView({behavior:'smooth',block:'start'});
 }
-finally {
-    Write-Host "`n  Server stopped." -ForegroundColor Yellow
-    $listener.Stop()
-    $listener.Close()
+
+function renderIssueTable(pid,issues,emptyMsg){
+  const p=document.getElementById(pid);
+  if(!issues.length){p.innerHTML=`<div class="result-table-wrap"><div class="empty-state">✓ ${emptyMsg}</div></div>`;return}
+  let h=`<div class="result-table-wrap"><table class="result-table"><thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Fix Version(s)</th><th>Assignee</th><th>Found In</th></tr></thead><tbody>`;
+  for(const i of issues){
+    h+=`<tr><td><a class="ticket-key" href="${JIRA_DIRECT}/browse/${i.key}" target="_blank">${esc(i.key)}</a></td><td style="max-width:300px">${esc(i.summary)}</td><td><span class="status-pill ${getStatusClass(i.status)}">${esc(i.status)}</span></td><td>${i.fixVersions.length?i.fixVersions.map(v=>`<span class="version-tag">${esc(v)}</span>`).join(' '):'<span style="color:var(--warning)">EMPTY</span>'}</td><td>${esc(i.assignee)}</td><td>${i.repos.map(r=>`<span class="repo-tag">${r}</span>`).join(' ')}</td></tr>`;
+  }
+  p.innerHTML=h+'</tbody></table></div>';
 }
+
+function renderAllTickets(r){
+  const p=document.getElementById('panel-allTickets'),t=r.allPrevTickets,accSet=new Set(r.accidental.map(a=>a.key));
+  if(!t.length){p.innerHTML='<div class="result-table-wrap"><div class="empty-state">No tickets.</div></div>';return}
+  let h=`<div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">${t.length} unique CRD tickets from release diff. Red = unexpected Fix Version.</div><div class="result-table-wrap"><table class="result-table"><thead><tr><th>Ticket</th><th>Status</th></tr></thead><tbody>`;
+  for(const k of t.sort()){const bad=accSet.has(k);h+=`<tr><td><a class="ticket-key" href="${JIRA_DIRECT}/browse/${k}" target="_blank" ${bad?'style="color:var(--danger)"':''}>${k}</a></td><td>${bad?'<span class="badge badge-red">Unexpected Fix Version</span>':'<span class="badge badge-green">OK</span>'}</td></tr>`}
+  p.innerHTML=h+'</tbody></table></div>';
+}
+
+function renderByRepo(r){
+  const p=document.getElementById('panel-byRepo');let h='';
+  for(const repo of r.config.repos){
+    const d=r.repoTicketMap[repo]||{},prev=d.prevComparison||[],comet=d.cometComparison||[];
+    h+=`<div class="result-table-wrap"><div style="padding:12px 14px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:13px;font-weight:600">${repo} <span class="badge badge-blue" style="margin-left:8px">${prev.length} release diff</span> <span class="badge badge-blue" style="margin-left:4px">${comet.length} project/comet diff</span></div><div style="padding:12px 14px;font-size:12px;color:var(--text-secondary)"><strong>Release diff:</strong> ${prev.length?prev.sort().join(', '):'—'}<br><strong>project/comet diff:</strong> ${comet.length?comet.sort().join(', '):'—'}</div></div>`;
+  }
+  p.innerHTML=h||'<div class="empty-state">No data.</div>';
+}
+
+function getStatusClass(s){s=(s||'').toLowerCase();if(['done','closed','resolved','complete','released'].some(k=>s.includes(k)))return'done';if(['progress','review','testing','active'].some(k=>s.includes(k)))return'progress';return'todo'}
+function switchTab(n){const names=['accidental','missing','allTickets','byRepo'];document.querySelectorAll('#tabBar .tab-btn').forEach((b,i)=>b.classList.toggle('active',names[i]===n));document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+n).classList.add('active')}
+
+function exportResults(){
+  if(!verificationResult){alert('Run validation first.');return}
+  const r=verificationResult,hr='═'.repeat(72),lines=[hr,'  COMET RELEASE BRANCH VALIDATION REPORT',hr,'',`  Generated:  ${new Date(r.timestamp).toLocaleString()}`,`  Release:    ${r.config.currentVersion} (release/${r.config.currentVersion})`,`  Previous:   ${r.config.previousVersion} (release/${r.config.previousVersion})`,`  Team:       ${r.config.team||'All'}`,`  Repos:      ${r.config.repos.join(', ')}`,'',hr,`  VERDICT: ${r.stats.accidental===0&&r.stats.missing===0?'✅ PASSED':'❌ FAILED'}`,hr,'',`  Accidental: ${r.stats.accidental}`,`  Missing:    ${r.stats.missing}`,''];
+  if(r.accidental.length){lines.push('─'.repeat(72),'  ACCIDENTAL INCLUSIONS','─'.repeat(72));r.accidental.forEach(i=>lines.push(`  ${i.key.padEnd(14)} [${i.fixVersions.join(',')||'EMPTY'}] ${i.summary.substring(0,50)}`));lines.push('')}
+  if(r.missing.length){lines.push('─'.repeat(72),'  MISSING FROM RELEASE','─'.repeat(72));r.missing.forEach(i=>lines.push(`  ${i.key.padEnd(14)} [${i.status}] ${i.assignee.padEnd(20)} ${i.summary.substring(0,50)}`));lines.push('')}
+  lines.push(hr,'  End of report',hr);
+  const blob=new Blob([lines.join('\n')],{type:'text/plain'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`comet-validation-${r.config.currentVersion}-${new Date().toISOString().split('T')[0]}.txt`;a.click();URL.revokeObjectURL(a.href);
+}
+
+function copyEmailBody(){
+  if(!verificationResult){alert('Run validation first.');return}
+  const r=verificationResult;let b=`COMET Release Branch Validation — ${r.config.currentVersion}\n\nRun: ${new Date(r.timestamp).toLocaleString()}\nTeam: ${r.config.team||'All'}\nRepos: ${r.config.repos.join(', ')}\n\n`;
+  if(r.accidental.length){b+=`ACCIDENTAL INCLUSIONS (${r.accidental.length}):\nThese JIRAs are in the release branch but have wrong/empty Fix Version:\n\n`;r.accidental.forEach(i=>{b+=`  ${i.key} — ${i.summary} [fixVersion: ${i.fixVersions.join(',')||'EMPTY'}]\n`});b+='\nAction: Update Fix Version or revert code.\n\n'}
+  if(r.missing.length){b+=`POTENTIALLY MISSING (${r.missing.length}):\nThese have fixVersion=${r.config.currentVersion} but may not be in the release branch:\n\n`;r.missing.forEach(i=>{b+=`  ${i.key} — ${i.summary} [${i.status}] [${i.assignee}]\n`});b+='\nAction: Merge to release branch or update Fix Version.\n'}
+  if(!r.accidental.length&&!r.missing.length)b+='✅ All checks passed. No issues found.\n';
+  navigator.clipboard.writeText(b).then(()=>alert('Copied! Paste into email to COMET_OM-Dev@capgroup.com')).catch(()=>{const ta=document.createElement('textarea');ta.value=b;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);alert('Copied!')});
+}
+
+async function runMockDemo(){
+  document.getElementById('currentVersion').value='24.3.8';
+  document.getElementById('previousVersion').value='24.3.7';
+  document.getElementById('teamName').value='Order Management & ETF';
+  document.getElementById('statusLog').innerHTML='';document.getElementById('results').classList.remove('active');
+  const steps=[[3,'Fix Version (current): "24.3.8"  |  Fix Version (previous): "24.3.7"','info'],[5,'Branch (current): release/24.3.8  |  Branch (previous): release/24.3.7','info'],[8,'═══ Phase 1: release/24.3.7 → release/24.3.8 (accidental inclusions)','info'],[11,'  [1/8] comet-autosys','info'],[13,'  comet-autosys: 12 commits, 5 CRD tickets','success'],[16,'  [2/8] comet-op-clientaddins','info'],[18,'  comet-op-clientaddins: 4 commits, 2 CRD tickets','success'],[21,'  [3/8] comet-op-database','info'],[24,'  comet-op-database: 23 commits, 9 CRD tickets','success'],[27,'  [4/8] comet-op-dbadmin','info'],[29,'  comet-op-dbadmin: 6 commits, 3 CRD tickets','success'],[32,'  [5/8] comet-op-middletier','info'],[35,'  comet-op-middletier: 31 commits, 14 CRD tickets','success'],[38,'  [6/8] comet-op-mtplugins','info'],[40,'  comet-op-mtplugins: 8 commits, 4 CRD tickets','success'],[43,'  [7/8] comet-op-powercenter','info'],[45,'  comet-op-powercenter: 3 commits, 1 CRD tickets','success'],[48,'  [8/8] comet-op-services','info'],[50,'  comet-op-services: 18 commits, 8 CRD tickets','success'],[52,'Phase 1 done: 41 unique tickets','success'],[55,'═══ Phase 2: release/24.3.8 → project/comet (missing)','info'],[58,'  [1/8] comet-autosys','info'],[60,'  comet-autosys: 3 commits, 2 CRD tickets','success'],[63,'  [2-4/8] clientaddins, database, dbadmin…','info'],[66,'  database: 5 commits, 3 tickets | dbadmin: 1 commit, 1 ticket','success'],[71,'  [5/8] comet-op-middletier','info'],[73,'  middletier: 7 commits, 4 CRD tickets','success'],[76,'  [6-8/8] remaining repos…','info'],[79,'Phase 2 done: 9 unique tickets','success'],[82,'═══ Phase 3: JIRA — accidental inclusions','info'],[84,'  JQL: project = CRD AND "Assigned Team" = "Order Management & ETF" AND (fixVersion is EMPTY OR fixVersion != "24.3.8") AND key in (...)','info'],[88,'  Found 3 with unexpected Fix Version','error'],[91,'═══ Phase 4: JIRA — missing from release','info'],[93,'  JQL: project = CRD AND "Assigned Team" = "Order Management & ETF" AND fixVersion = "24.3.8" AND key in (...)','info'],[96,'  Found 2 potentially missing','error'],[100,'✓ Validation complete!','success']];
+  for(const[p,m,l]of steps){setProgress(p);log(m,l);await new Promise(r=>setTimeout(r,120+Math.random()*180))}
+  const rtm={};CRD_REPOS.forEach(r=>rtm[r]={prevComparison:[],cometComparison:[]});
+  rtm['comet-op-database'].prevComparison=['CRD-54948','CRD-55286','CRD-55371','CRD-55459','CRD-54756','CRD-55514','CRD-55217','CRD-54550','CRD-55543'];
+  rtm['comet-op-middletier'].prevComparison=['CRD-56190','CRD-55771','CRD-55958','CRD-55826','CRD-54361','CRD-55740','CRD-55789','CRD-55498','CRD-55641','CRD-55691','CRD-55741','CRD-53106','CRD-55663','CRD-55110'];
+  rtm['comet-op-services'].prevComparison=['CRD-55573','CRD-55571','CRD-55250','CRD-54964','CRD-55514','CRD-55053','CRD-55087','CRD-55320'];
+  rtm['comet-autosys'].prevComparison=['CRD-55073','CRD-55217','CRD-54550','CRD-54948','CRD-55733'];
+  rtm['comet-op-clientaddins'].prevComparison=['CRD-55586','CRD-54756'];
+  rtm['comet-op-dbadmin'].prevComparison=['CRD-53075','CRD-55342','CRD-54756'];
+  rtm['comet-op-mtplugins'].prevComparison=['CRD-54948','CRD-55158','CRD-55371','CRD-55459'];
+  rtm['comet-op-powercenter'].prevComparison=['CRD-54550'];
+  rtm['comet-op-database'].cometComparison=['CRD-55601','CRD-55890','CRD-55912'];
+  rtm['comet-op-middletier'].cometComparison=['CRD-55601','CRD-55945','CRD-55890','CRD-55788'];
+  rtm['comet-autosys'].cometComparison=['CRD-55788','CRD-55601'];
+  rtm['comet-op-dbadmin'].cometComparison=['CRD-55912'];
+  const allP=[...new Set(Object.values(rtm).flatMap(d=>d.prevComparison))],allC=[...new Set(Object.values(rtm).flatMap(d=>d.cometComparison))];
+  verificationResult={timestamp:new Date().toISOString(),config:{currentVersion:'24.3.8',previousVersion:'24.3.7',currentBranch:'release/24.3.8',previousBranch:'release/24.3.7',team:'Order Management & ETF',repos:[...CRD_REPOS]},stats:{totalTicketsPrevComparison:allP.length,totalTicketsCometComparison:allC.length,accidental:3,missing:2,reposScanned:8},
+    accidental:[{key:'CRD-55543',summary:'Add new settlement batch processing for Q1 regulatory changes',status:'In Progress',type:'Story',assignee:'John Martinez',fixVersions:['26.1.3'],repos:['comet-op-database']},{key:'CRD-54948',summary:'Implement alternative order routing fallback for APAC markets',status:'In Progress',type:'Story',assignee:'Sarah Chen',fixVersions:['24.3.9'],repos:['comet-op-database','comet-op-mtplugins','comet-autosys']},{key:'CRD-55826',summary:'Update CUSIP validation rules for new fixed income instruments',status:'Open',type:'Bug',assignee:'Unassigned',fixVersions:[],repos:['comet-op-middletier']}],
+    missing:[{key:'CRD-55601',summary:'Fix ETF basket composition calculation for rebalance events',status:'Done',type:'Bug',assignee:'Priya Sharma',fixVersions:['24.3.8'],repos:['comet-op-database','comet-op-middletier','comet-autosys']},{key:'CRD-55890',summary:'Add corporate action notification handler for mandatory events',status:'Done',type:'Story',assignee:'David Kim',fixVersions:['24.3.8'],repos:['comet-op-database','comet-op-middletier']}],
+    allPrevTickets:allP,allCometTickets:allC,repoTicketMap:rtm};
+  renderResults(verificationResult);
+}
+
+if(!USE_PROXY)document.getElementById('corsNotice').style.display='block';
+</script>
+</body>
+</html>
