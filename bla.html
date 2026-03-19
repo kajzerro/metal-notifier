@@ -278,7 +278,7 @@ function jiraHeaders(){return{'Authorization':'Basic '+btoa(getVal('jiraUser')+'
 function ghHeaders(){const h={'Accept':'application/vnd.github.v3+json'};const t=getVal('ghToken');if(t)h['Authorization']='token '+t;return h}
 async function jiraFetch(p){const r=await fetch(JIRA_BASE+p,{headers:jiraHeaders()});if(!r.ok)throw new Error(`JIRA ${r.status}: ${(await r.text()).substring(0,200)}`);return r.json()}
 async function jiraPost(jql,maxResults=10){
-  const resp=await fetch(JIRA_BASE+'/rest/api/3/search/jql',{method:'POST',headers:jiraHeaders(),body:JSON.stringify({query:jql,maxResults,fields:['key','summary','status','fixVersions','issuetype','assignee']})});
+  const resp=await fetch(JIRA_BASE+'/rest/api/3/search',{method:'POST',headers:jiraHeaders(),body:JSON.stringify({jql,maxResults,fields:['key','summary','status','fixVersions','issuetype','assignee']})});
   if(!resp.ok)throw new Error(`JIRA ${resp.status}: ${(await resp.text()).substring(0,300)}`);
   return resp.json();
 }
@@ -307,14 +307,13 @@ async function getTicketsFromCompare(repo,base,head){
 
 async function jiraQueryIssues(jql){
   const all=[];
-  let nextPageToken=null;
+  let startAt=0;
+  const maxResults=100;
   let page=0;
   do{
-    // Use POST to avoid URL length limits with long key lists
-    const body={query:jql,maxResults:100,fields:['key','summary','status','fixVersions','issuetype','assignee']};
-    if(nextPageToken)body.nextPageToken=nextPageToken;
+    const body={jql,maxResults,startAt,fields:['key','summary','status','fixVersions','issuetype','assignee']};
 
-    const resp=await fetch((USE_PROXY?'/api/jira':JIRA_DIRECT)+'/rest/api/3/search/jql',{
+    const resp=await fetch((USE_PROXY?'/api/jira':JIRA_DIRECT)+'/rest/api/3/search',{
       method:'POST',
       headers:{...jiraHeaders()},
       body:JSON.stringify(body)
@@ -327,25 +326,23 @@ async function jiraQueryIssues(jql){
     if(page===0)log(`  [DEBUG] Raw response (first 600 chars): ${rawText.substring(0,600)}`,'info');
     const d=JSON.parse(rawText);
 
-    // Debug: log raw response structure on first page
     if(page===0){
-      const topKeys=Object.keys(d);
-      log(`  [DEBUG] Response keys: ${topKeys.join(', ')}`,'info');
-      log(`  [DEBUG] isLast: ${d.isLast}, nextPageToken: ${d.nextPageToken||'none'}, issues count: ${(d.issues||[]).length}`,'info');
+      log(`  [DEBUG] Response keys: ${Object.keys(d).join(', ')}`,'info');
+      log(`  [DEBUG] total: ${d.total}, issues count: ${(d.issues||[]).length}`,'info');
       if(d.issues&&d.issues.length>0){
         const sample=d.issues[0];
         log(`  [DEBUG] Sample: ${sample.key}`,'info');
-        const fv=sample.fields?.fixVersions;
-        log(`  [DEBUG] fixVersions: ${JSON.stringify(fv)}`,'info');
-        log(`  [DEBUG] Fields: ${JSON.stringify(sample.fields).substring(0,400)}`,'');
+        log(`  [DEBUG] fixVersions: ${JSON.stringify(sample.fields?.fixVersions)}`,'info');
       }
     }
 
-    all.push(...(d.issues||[]));
-    nextPageToken=d.nextPageToken||null;
+    const batch=d.issues||[];
+    all.push(...batch);
+    startAt+=batch.length;
     page++;
     if(page>20)break;// safety limit
-  }while(nextPageToken);
+    if(batch.length===0||startAt>=(d.total||0))break;
+  }while(true);
 
   log(`  [DEBUG] Total issues retrieved: ${all.length}`,'info');
   return all;
