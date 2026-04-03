@@ -1,328 +1,487 @@
-// ============================================================================
-// REVISED APPROACH — Using the existing CollateralEndDateCalcFactory
-//
-// What already works:
-//   - Factory handles CIVIL_GUARANTY enterDate case correctly (+3 years)
-//   - Factory has maturityDateOfProduct() helper
-//   - Factory has enterDate/maturityDate constants
-//
-// What needs to change:
-//   1. Factory: maturityDate case returns wrong calc (DeclarationAndBgkCalc)
-//      → Replace with new CivilGuarantyMaturityEndDateCalc
-//   2. CivilGuarantyDocuments: doesn't call the factory yet
-//      → Call factory, pass result to DTO
-//   3. CivilGuarantyCollateralPrintDataDTO: doesn't accept calculator
-//      → Add constructor + calculateEndDate()
-//   4. New: CivilGuarantyMaturityEndDateCalc — correct maturityDate logic
-// ============================================================================
+package pl.ing.cms2.cms2formweb.process.collateral.agreement.dto.print;
 
+import org.junit.jupiter.api.Test;
 
-// ============================================================================
-// FILE 1: CivilGuarantyMaturityEndDateCalc.java (NEW)
-// Package: pl.ing.cms2.cms2formweb.process.collateral.agreement.calculator
-//
-// Handles ONLY the maturityDate case (and enterDate fallthrough when
-// collateralEndDate >= repaymentDate). The enterDate + date < repayment
-// case is already handled by CollateralEndDateCivilCalc in the factory.
-// ============================================================================
-
-package pl.ing.cms2.cms2formweb.process.collateral.agreement.calculator;
-
+import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.Optional;
-import org.apache.commons.lang3.StringUtils;
+import java.util.Collections;
 
-/**
- * Calculates collateralEndDate for Civil Guaranty — maturityDate case.
- * <p>
- * Multiproduct (UW):
- *   BGK exists && bgkGuarantyType != pldKfg          → mcRcfRepaymentDate + 3
- *   (!BGK || pldKfg) && textId == klauzula UFN        → mcRcfRepaymentDate + 10
- *   (!BGK || pldKfg) && textId != klauzula UFN        → mcRcfRepaymentDate + 3
- * <p>
- * Gwarancja / Akredytywa / Findo:
- *   always → creditFacilityRepaymentDate + 3
- *
- * @see CollateralEndDateDeclarationAndBgkCalc for similar pattern
- */
-public class CivilGuarantyMaturityEndDateCalc implements CollateralEndDateCalc {
+import static org.junit.jupiter.api.Assertions.*;
 
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("dd-MM-yyyy");
-    private static final String GUARANTY_TYPE_PLD_KFG = "pldKfg";
-    private static final String KLAUZULA_UFN = "KLPK_PRZEDLUZ_KREDYT_UFN_LM";
-    private static final int YEARS_KPC = 3;
-    private static final int YEARS_UFN = 10;
+public class CivilGuarantyCollateralPrintDataDTOTest {
 
-    private final DocumentData documentData;
-    private final String textId;
+    // =========================================================================
+    // Istniejący test — BEZ ZMIAN
+    // =========================================================================
 
-    public CivilGuarantyMaturityEndDateCalc(DocumentData documentData, String textId) {
-        this.documentData = documentData;
-        this.textId = textId;
-    }
+    @Test
+    public void shouldFillCollateralRenewalFieldsInCollateralProviders() {
+        Provider collateralProvider = new Provider();
+        collateralProvider.setCardIndex("123");
 
-    @Override
-    public LocalDate calculate() {
-        if (isMultiProductCreditFacility()) {
-            return calculateForMultiproduct();
-        }
+        CivilGuaranty civilGuaranty = new CivilGuaranty();
+        civilGuaranty.setChangingCollateral(YES);
+        civilGuaranty.setAnnexChange(Collections.emptyList());
+        civilGuaranty.setChangeType("Grande type");
+        civilGuaranty.setCollateralAnnexNumber(777);
+        civilGuaranty.setCollateralAgreementNumber("Some agreement number");
+        civilGuaranty.setCollateralAgreementSignatureDate(
+                DateTimeFormatterUtil.parseCmsDate("01-01-2024"));
+        civilGuaranty.setProviders(Collections.singleton(collateralProvider));
 
-        if (isGuaranteeOrLetterOfCreditOrAleo()) {
-            return creditFacilityRepaymentDatePlusYears(YEARS_KPC);
-        }
+        CollateralFormDataDTO collateral = new CollateralFormDataDTO();
+        collateral.setData(civilGuaranty);
 
-        return null;
-    }
+        CivilGuarantyCollateralPrintDataDTO printDataDTO =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, prepareEmptyDocumentData());
 
-    private LocalDate calculateForMultiproduct() {
-        if (isBgkNotPldKfg()) {
-            return mcfRcfRepaymentDatePlusYears(YEARS_KPC);
-        }
+        assertTrue(CollectionUtils.isNotEmpty(printDataDTO.collateralProviders));
+        assertEquals(1, printDataDTO.collateralProviders.size());
 
-        if (KLAUZULA_UFN.equals(textId)) {
-            return mcfRcfRepaymentDatePlusYears(YEARS_UFN);
-        }
+        CollateralAgreementProviderDTO collateralAgreementProviderDTO =
+                printDataDTO.collateralProviders.get(0);
 
-        return mcfRcfRepaymentDatePlusYears(YEARS_KPC);
+        assertEquals(YES, collateralAgreementProviderDTO.getChangingCollateral());
+        assertTrue(Objects.nonNull(collateralAgreementProviderDTO.getAnnexChange()));
+        assertFalse(collateralAgreementProviderDTO.getAnnexChange().getBankAccount());
+        assertFalse(collateralAgreementProviderDTO.getAnnexChange().getCollateralProviderData());
+        assertFalse(collateralAgreementProviderDTO.getAnnexChange().getAddDealWithOldDebtor());
+        assertFalse(collateralAgreementProviderDTO.getAnnexChange().getRemoveDealWithOldDebtor());
+        assertEquals("Grande type", collateralAgreementProviderDTO.getChangeType());
+        assertEquals(777, collateralAgreementProviderDTO.getCollateralAnnexNumber());
+        assertEquals("Some agreement number",
+                collateralAgreementProviderDTO.getOldCollateralAgreementNumber());
+        assertEquals("01-01-2024",
+                collateralAgreementProviderDTO.getCollateralAgreementSignatureDate());
     }
 
     // =========================================================================
-    // Product type helpers
+    // nominalValue
     // =========================================================================
 
-    private boolean isMultiProductCreditFacility() {
-        return isExistProductType(Fields.Value.MULTI_PRODUCT_CREDIT_FACILITY);
+    @Test
+    public void shouldReturnEnteredNominalValue_whenLimitationIsEnterAmount() {
+        // Scenariusz 1 / 8: enterAmount → wartość wpisana bez zmian
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("enterAmount");
+        civilGuaranty.setNominalValue(new BigDecimal("2000"));
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 4, 10));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "multiproductCreditFacility", null, "10-05-2026", null);
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertBigDecimalEquals(new BigDecimal("2000"), getFirstProvider(dto).getNominalValue());
     }
 
-    private boolean isGuaranteeOrLetterOfCreditOrAleo() {
-        return isExistProductType(Fields.Value.BANK_GUARANTEE)
-                || isExistProductType(Fields.Value.LETTER_OF_CREDIT)
-                || isExistProductType(Fields.Value.ALEO);
+    @Test
+    public void shouldReturn150PercentOfMcRcfAmount_whenEntireAmountAndMultiproduct() {
+        // Scenariusz 2-5: entireAmount + UW → 1.5 * mcRcfAmount
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("maturityDate");
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentDataWithBgk(
+                "multiproductCreditFacility",
+                new BigDecimal("2000"),
+                "10-05-2026", null,
+                "notPldKfg");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertBigDecimalEquals(new BigDecimal("3000"), getFirstProvider(dto).getNominalValue());
     }
 
-    private boolean isBgkNotPldKfg() {
-        return isExistBgkCollateral() && !isExistBgkGuarantyType(GUARANTY_TYPE_PLD_KFG);
+    @Test
+    public void shouldReturn150PercentOfCreditFacilityAmount_whenEntireAmountAndBankGuarantee() {
+        // Scenariusz 6: entireAmount + gwarancja → 1.5 * creditFacilityAmount
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("maturityDate");
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "bankGuarantee", null, null, "10-05-2026");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertBigDecimalEquals(new BigDecimal("3000"), getFirstProvider(dto).getNominalValue());
+    }
+
+    @Test
+    public void shouldReturn150PercentOfCreditFacilityAmount_whenEntireAmountAndLetterOfCredit() {
+        // Scenariusz 7: entireAmount + akredytywa → 1.5 * creditFacilityAmount
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("maturityDate");
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "letterOfCredit", null, null, "10-05-2026");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertBigDecimalEquals(new BigDecimal("3000"), getFirstProvider(dto).getNominalValue());
+    }
+
+    @Test
+    public void shouldReturn150PercentOfCreditFacilityAmount_whenEntireAmountAndAleo() {
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("maturityDate");
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "aleo", null, null, "10-05-2026");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertBigDecimalEquals(new BigDecimal("3000"), getFirstProvider(dto).getNominalValue());
     }
 
     // =========================================================================
-    // Data access helpers (same pattern as DeclarationAndBgkCalc)
+    // collateralEndDate — enterDate + date < repayment → date + 3
     // =========================================================================
 
-    private boolean isExistProductType(String productType) {
-        ProductParamsModel model = documentData.getProductParamsModel();
-        return model != null && productType.equals(model.getProductType());
+    @Test
+    public void shouldAddThreeYearsToCollateralEndDate_whenEnterDateBeforeMcRcfRepayment() {
+        // Scenariusz 1: enterDate=10.04.2026, mcRcf=10.05.2026 → 10.04.2029
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("enterAmount");
+        civilGuaranty.setNominalValue(new BigDecimal("2000"));
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 4, 10));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "multiproductCreditFacility", null, "10-05-2026", null);
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2029, 4, 10), getFirstProvider(dto).getCollateralEndDate());
     }
 
-    private boolean isExistBgkCollateral() {
-        return documentData.getCollaterals().stream()
-                .anyMatch(c -> CollateralType.BGK_GUARANTEE.name().equals(c.getCollateralType()));
+    @Test
+    public void shouldAddThreeYearsToCollateralEndDate_whenEnterDateBeforeCreditFacilityRepayment() {
+        // Findo: enterDate=10.01.2026, creditFac=10.05.2026 → 10.01.2029
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("enterAmount");
+        civilGuaranty.setNominalValue(new BigDecimal("5000"));
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 1, 10));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "aleo", null, null, "10-05-2026");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2029, 1, 10), getFirstProvider(dto).getCollateralEndDate());
     }
 
-    private boolean isExistBgkGuarantyType(String type) {
-        return documentData.getCollaterals().stream()
-                .filter(c -> CollateralType.BGK_GUARANTEE.name().equals(c.getCollateralType()))
-                .map(c -> (BgkGuarantee) c.getData())
-                .anyMatch(c -> type.equals(c.getBgkGuarantyType()));
+    // =========================================================================
+    // collateralEndDate — maturityDate / enterDate fallthrough + BGK !pldKfg → mcRcf + 3
+    // =========================================================================
+
+    @Test
+    public void shouldReturnMcRcfPlusThreeYears_whenMaturityDateAndBgkNotPldKfg() {
+        // Scenariusz 3: maturityDate + BGK !pldKfg → mcRcf + 3
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("maturityDate");
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentDataWithBgk(
+                "multiproductCreditFacility",
+                new BigDecimal("2000"),
+                "10-05-2026", null,
+                "notPldKfg");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2029, 5, 10), getFirstProvider(dto).getCollateralEndDate());
     }
 
-    private LocalDate creditFacilityRepaymentDatePlusYears(int years) {
-        return Optional.ofNullable(documentData.getAgreementDetailsModel())
-                .map(AgreementDetailsModel::getCreditFacilityRepaymentDate)
-                .filter(StringUtils::isNotBlank)
-                .map(date -> LocalDate.parse(date, FORMATTER).plusYears(years))
-                .orElse(null);
+    @Test
+    public void shouldReturnMcRcfPlusThreeYears_whenEnterDateFallthroughAndBgkNotPldKfg() {
+        // Scenariusz 2 / 9: enterDate >= repayment + BGK !pldKfg → mcRcf + 3
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 5, 11));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentDataWithBgk(
+                "multiproductCreditFacility",
+                new BigDecimal("2000"),
+                "10-05-2026", null,
+                "notPldKfg");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2029, 5, 10), getFirstProvider(dto).getCollateralEndDate());
     }
 
-    private LocalDate mcfRcfRepaymentDatePlusYears(int years) {
-        return Optional.ofNullable(documentData.getAgreementDetailsModel())
-                .map(AgreementDetailsModel::getMcfRcfRepaymentDate)
-                .filter(StringUtils::isNotBlank)
-                .map(date -> LocalDate.parse(date, FORMATTER).plusYears(years))
-                .orElse(null);
+    // =========================================================================
+    // collateralEndDate — maturityDate / enterDate fallthrough + (!BGK || pldKfg) → mcRcf + 13
+    // =========================================================================
+
+    @Test
+    public void shouldReturnMcRcfPlusThirteenYears_whenBgkPldKfg() {
+        // Scenariusz 4: BGK + pldKfg → mcRcf + 13
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 5, 11));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentDataWithBgk(
+                "multiproductCreditFacility",
+                new BigDecimal("2000"),
+                "10-05-2026", null,
+                "pldKfg");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2039, 5, 10), getFirstProvider(dto).getCollateralEndDate());
+    }
+
+    @Test
+    public void shouldReturnMcRcfPlusThirteenYears_whenNoBgk() {
+        // Scenariusz 5: brak BGK → mcRcf + 13
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 5, 11));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "multiproductCreditFacility",
+                new BigDecimal("2000"),
+                "10-05-2026", null);
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2039, 5, 10), getFirstProvider(dto).getCollateralEndDate());
+    }
+
+    // =========================================================================
+    // collateralEndDate — gwarancja / akredytywa / findo → creditFac + 3
+    // =========================================================================
+
+    @Test
+    public void shouldReturnCreditFacilityPlusThreeYears_whenBankGuarantee() {
+        // Scenariusz 6
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 5, 11));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "bankGuarantee", null, null, "10-05-2026");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2029, 5, 10), getFirstProvider(dto).getCollateralEndDate());
+    }
+
+    @Test
+    public void shouldReturnCreditFacilityPlusThreeYears_whenLetterOfCredit() {
+        // Scenariusz 7
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("entireAmount");
+        civilGuaranty.setCollateralEndPeriod("maturityDate");
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = buildDocumentData(
+                "letterOfCredit", null, null, "10-05-2026");
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2029, 5, 10), getFirstProvider(dto).getCollateralEndDate());
+    }
+
+    // =========================================================================
+    // Kompatybilność wsteczna
+    // =========================================================================
+
+    @Test
+    public void shouldKeepOriginalEndDate_whenOldConstructorUsed() {
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("enterAmount");
+        civilGuaranty.setNominalValue(new BigDecimal("1000"));
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 3, 1));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, prepareEmptyDocumentData());
+
+        assertEquals(LocalDate.of(2026, 3, 1), getFirstProvider(dto).getCollateralEndDate());
+    }
+
+    @Test
+    public void shouldKeepOriginalEndDate_whenEndDateCalcReturnsNull() {
+        CivilGuaranty civilGuaranty = createCivilGuaranty();
+        civilGuaranty.setLimitation("enterAmount");
+        civilGuaranty.setNominalValue(new BigDecimal("1000"));
+        civilGuaranty.setCollateralEndPeriod("enterDate");
+        civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 3, 1));
+
+        CollateralFormDataDTO collateral = createCollateral(civilGuaranty);
+        DocumentData documentData = prepareEmptyDocumentData();
+
+        // Factory zwraca () -> null gdy brak dat
+        CollateralEndDateCalc endDateCalc =
+                CollateralEndDateCalcFactory.createEndDateCalculator(collateral, documentData);
+
+        CivilGuarantyCollateralPrintDataDTO dto =
+                new CivilGuarantyCollateralPrintDataDTO(collateral, documentData, endDateCalc);
+
+        assertEquals(LocalDate.of(2026, 3, 1), getFirstProvider(dto).getCollateralEndDate());
+    }
+
+    // =========================================================================
+    // Metody pomocnicze
+    // =========================================================================
+
+    private CivilGuaranty createCivilGuaranty() {
+        CivilGuaranty civilGuaranty = new CivilGuaranty();
+        Provider provider = new Provider();
+        provider.setCardIndex("123");
+        civilGuaranty.setProviders(Collections.singleton(provider));
+        return civilGuaranty;
+    }
+
+    private CollateralFormDataDTO createCollateral(CivilGuaranty civilGuaranty) {
+        CollateralFormDataDTO collateral = new CollateralFormDataDTO();
+        collateral.setCollateralType(CollateralType.CIVIL_GUARANTY.name());
+        collateral.setData(civilGuaranty);
+        return collateral;
+    }
+
+    private CollateralAgreementProviderDTO getFirstProvider(
+            CivilGuarantyCollateralPrintDataDTO dto) {
+        assertTrue(CollectionUtils.isNotEmpty(dto.getCollateralProviders()));
+        return dto.getCollateralProviders().get(0);
+    }
+
+    private void assertBigDecimalEquals(BigDecimal expected, BigDecimal actual) {
+        assertNotNull(actual, "nominalValue should not be null");
+        assertEquals(0, expected.compareTo(actual),
+                "Expected " + expected + " but got " + actual);
+    }
+
+    private DocumentData prepareEmptyDocumentData() {
+        return DocumentData.builder()
+                .agreementDetailsModel(new AgreementDetailsModel())
+                .productParamsModel(new ProductParamsModel())
+                .providers(Collections.emptyMap())
+                .build();
+    }
+
+    private DocumentData buildDocumentData(String productType,
+                                            BigDecimal mcRcfAmount,
+                                            String mcRcfRepaymentDate,
+                                            String creditFacilityRepaymentDate) {
+        ProductParamsModel productParamsModel = new ProductParamsModel();
+        productParamsModel.setProductType(productType);
+        if (mcRcfAmount != null) {
+            productParamsModel.setCreditFacilityAmount(mcRcfAmount);
+        }
+
+        AgreementDetailsModel agreementDetailsModel = new AgreementDetailsModel();
+        if (mcRcfRepaymentDate != null) {
+            agreementDetailsModel.setMcfRcfRepaymentDate(mcRcfRepaymentDate);
+        }
+        if (creditFacilityRepaymentDate != null) {
+            agreementDetailsModel.setCreditFacilityRepaymentDate(creditFacilityRepaymentDate);
+        }
+
+        return DocumentData.builder()
+                .productParamsModel(productParamsModel)
+                .agreementDetailsModel(agreementDetailsModel)
+                .providers(Collections.emptyMap())
+                .collaterals(Collections.emptyList())
+                .build();
+    }
+
+    private DocumentData buildDocumentDataWithBgk(String productType,
+                                                   BigDecimal mcRcfAmount,
+                                                   String mcRcfRepaymentDate,
+                                                   String creditFacilityRepaymentDate,
+                                                   String bgkGuarantyType) {
+        ProductParamsModel productParamsModel = new ProductParamsModel();
+        productParamsModel.setProductType(productType);
+        if (mcRcfAmount != null) {
+            productParamsModel.setCreditFacilityAmount(mcRcfAmount);
+        }
+
+        AgreementDetailsModel agreementDetailsModel = new AgreementDetailsModel();
+        if (mcRcfRepaymentDate != null) {
+            agreementDetailsModel.setMcfRcfRepaymentDate(mcRcfRepaymentDate);
+        }
+        if (creditFacilityRepaymentDate != null) {
+            agreementDetailsModel.setCreditFacilityRepaymentDate(creditFacilityRepaymentDate);
+        }
+
+        BgkGuarantee bgkGuarantee = new BgkGuarantee();
+        bgkGuarantee.setBgkGuarantyType(bgkGuarantyType);
+
+        CollateralFormDataDTO bgkCollateral = new CollateralFormDataDTO();
+        bgkCollateral.setCollateralType(CollateralType.BGK_GUARANTEE.name());
+        bgkCollateral.setData(bgkGuarantee);
+
+        return DocumentData.builder()
+                .productParamsModel(productParamsModel)
+                .agreementDetailsModel(agreementDetailsModel)
+                .providers(Collections.emptyMap())
+                .collaterals(Collections.singletonList(bgkCollateral))
+                .build();
     }
 }
-
-
-// ============================================================================
-// FILE 2: CollateralEndDateCalcFactory.java — CHANGE
-//
-// Only the CIVIL_GUARANTY maturityDate case changes (lines 40-46).
-// Everything else stays the same.
-// ============================================================================
-
-// BEFORE (lines 40-46):
-//
-//   if (MATURITY_DATE.equals(civilGuaranty.getCollateralEndPeriod()) ||
-//           (ENTER_DATE.equals(civilGuaranty.getCollateralEndPeriod()) &&
-//           collateralEndDate != null && maturityDate != null &&
-//           collateralEndDate.isAfter(maturityDate))) {
-//
-//       return new CollateralEndDateDeclarationAndBgkCalc(documentData);
-//   }
-
-// AFTER:
-//
-//   if (MATURITY_DATE.equals(civilGuaranty.getCollateralEndPeriod()) ||
-//           (ENTER_DATE.equals(civilGuaranty.getCollateralEndPeriod()) &&
-//           collateralEndDate != null && maturityDate != null &&
-//           collateralEndDate.isAfter(maturityDate))) {
-//
-//       return new CivilGuarantyMaturityEndDateCalc(documentData, civilGuaranty.getTextId());
-//   }
-
-
-// ============================================================================
-// FILE 3: CivilGuarantyDocuments.java — CHANGE
-//
-// Wire the factory to the DTO.
-// ============================================================================
-
-// BEFORE:
-//
-//   @Override
-//   protected CollateralBasePrintDataDTO createBasePrintData(CollateralFormDataDTO formDataDTO,
-//                                                             DocumentData documentData) {
-//       return new CivilGuarantyCollateralPrintDataDTO(formDataDTO, documentData);
-//   }
-
-// AFTER:
-
-    @Override
-    protected CollateralBasePrintDataDTO createBasePrintData(CollateralFormDataDTO formDataDTO,
-                                                              DocumentData documentData) {
-        CollateralEndDateCalc endDateCalc =
-                CollateralEndDateCalcFactory.createEndDateCalculator(formDataDTO, documentData);
-
-        return new CivilGuarantyCollateralPrintDataDTO(formDataDTO, documentData, endDateCalc);
-    }
-
-
-// ============================================================================
-// FILE 4: CivilGuarantyCollateralPrintDataDTO.java — CHANGES
-// ============================================================================
-
-    // --- NEW CONSTRUCTOR (keep old one if other callers exist) ---
-
-    public CivilGuarantyCollateralPrintDataDTO(CollateralFormDataDTO collateral,
-                                                DocumentData documentData,
-                                                CollateralEndDateCalc collateralEndDateCalc) {
-        setData(collateral, documentData);
-
-        CivilGuaranty civilGuaranty = (CivilGuaranty) collateral.getData();
-        setCollateralProviders(civilGuaranty.getProviders(), documentData.getProviders(), civilGuaranty);
-
-        calculateEndDate(collateralEndDateCalc);
-    }
-
-    // --- NEW METHOD ---
-
-    private void calculateEndDate(CollateralEndDateCalc endDateCalcStrategy) {
-        if (endDateCalcStrategy != null) {
-            this.collateralEndDate = endDateCalcStrategy.calculate();
-        }
-    }
-
-    // --- CHANGE in setCollateralProviders ---
-    //
-    // REPLACE:
-    //   providerDTO.setNominalValue(civilGuaranty.getNominalValue());
-    // WITH:
-    //   providerDTO.setNominalValue(calculateNominalValue(civilGuaranty));
-
-    // --- NEW METHOD ---
-
-    /**
-     * Notepad pseudocode:
-     *   if limitation == enterAmount → cmal (user-entered value)
-     *   else if productType == multiproductCreditFacility → 1.5 * mcRcfAmount
-     *   else → creditFacilityAmount
-     */
-    private BigDecimal calculateNominalValue(CivilGuaranty civilGuaranty) {
-        if ("enterAmount".equals(civilGuaranty.getLimitation())) {
-            return civilGuaranty.getNominalValue();
-        }
-
-        if (Fields.Value.MULTI_PRODUCT_CREDIT_FACILITY.equals(this.productType)) {
-            return multiplyByOnePointFive(getMcRcfAmount());
-        }
-
-        return this.creditFacilityAmount;
-    }
-
-    private BigDecimal getMcRcfAmount() {
-        if (this.multiProductCreditFacilityParams != null) {
-            return this.multiProductCreditFacilityParams.getMcRcfAmount(); // TODO: verify getter
-        }
-        return null;
-    }
-
-    private BigDecimal multiplyByOnePointFive(BigDecimal amount) {
-        if (amount == null) {
-            return null;
-        }
-        return amount.multiply(new BigDecimal("1.5"));
-    }
-
-
-// ============================================================================
-// SUMMARY — 4 files, minimal changes
-// ============================================================================
-//
-// NEW (1 file):
-//   CivilGuarantyMaturityEndDateCalc.java
-//     — handles maturityDate logic: product/BGK/textId branching
-//     — clean, focused, ~80 lines
-//
-// MODIFIED (3 files):
-//   CollateralEndDateCalcFactory.java
-//     — 1 line: replace DeclarationAndBgkCalc with CivilGuarantyMaturityEndDateCalc
-//
-//   CivilGuarantyDocuments.java
-//     — 2 lines: call factory, pass calculator to DTO
-//
-//   CivilGuarantyCollateralPrintDataDTO.java
-//     — new constructor with CollateralEndDateCalc
-//     — calculateEndDate() method (same as Declaration777FromMortgagePrintDataDTO)
-//     — calculateNominalValue() + helpers
-//     — 1 line change in setCollateralProviders
-//
-// UNCHANGED:
-//   CollateralEndDateCivilCalc.java (enterDate + date < maturity → +3, still correct)
-//   CollateralEndDateDeclarationAndBgkCalc.java (still used by other collateral types)
-//
-// ============================================================================
-// TODO before merging
-// ============================================================================
-//
-// - [ ] Verify getTextId() exists on CivilGuaranty
-// - [ ] Verify getMcRcfAmount() exists on MultiProductCreditFacilityModel
-// - [ ] Check if old CivilGuarantyCollateralPrintDataDTO(collateral, documentData)
-//       constructor has other callers — if so, keep it and add new overload
-// - [ ] Unit tests for CivilGuarantyMaturityEndDateCalc (test matrix below)
-// - [ ] Unit tests for calculateNominalValue
-//
-// Test matrix — CivilGuarantyMaturityEndDateCalc:
-//   multiproduct + BGK (not pldKfg)          → mcRcf + 3
-//   multiproduct + no BGK + textId == UFN     → mcRcf + 10
-//   multiproduct + pldKfg + textId == UFN     → mcRcf + 10
-//   multiproduct + no BGK + textId != UFN     → mcRcf + 3
-//   multiproduct + pldKfg + textId != UFN     → mcRcf + 3
-//   bankGuarantee                             → creditFac + 3
-//   letterOfCredit                            → creditFac + 3
-//   aleo                                      → creditFac + 3
-//   unknown productType                       → null
-//   null repaymentDate                        → null
-//
-// Test matrix — factory routing (existing + new):
-//   CIVIL_GUARANTY + enterDate + date < maturity    → CollateralEndDateCivilCalc (existing, +3)
-//   CIVIL_GUARANTY + enterDate + date >= maturity   → CivilGuarantyMaturityEndDateCalc (NEW)
-//   CIVIL_GUARANTY + maturityDate                   → CivilGuarantyMaturityEndDateCalc (NEW)
-//   CIVIL_GUARANTY + enterDate + nulls              → () -> null (existing)
-//
-// Test matrix — calculateNominalValue:
-//   enterAmount                               → nominalValue as-is
-//   entireAmount + multiproduct               → 1.5 * mcRcfAmount
-//   entireAmount + bankGuarantee              → creditFacilityAmount
-//   entireAmount + aleo                       → creditFacilityAmount
-//   entireAmount + multiproduct + null mcRcf  → null
