@@ -1,35 +1,5 @@
-_renderMcfAvailabilityPeriod() {
-  return html`
-    <h2 class="section-header">${this.localize('ProductParameters.mcfAvailabilityPeriod')}</h2>
-    ${this._renderEditableSectionInfo({ sectionName: 'amountSection' })}
-
-    <div class="row">
-      <div class="col-4 form-label-flex">
-        <p>${this.localize('ProductParameters.mcfDisbursementPeriodLength')}</p>
-      </div>
-      <div class="col-8">
-        <div class="input-container">
-          <cms2-dict-select
-            at-id="mcfDisbursementPeriodLength"
-            id="mcfDisbursementPeriodLength"
-            .modelValue=${this.productData.mcfDisbursementPeriodLength}
-            disabled
-            .dictionary=${this.dictionariesService.getProductCreditFacilityPeriodDictionary(this.productData)}
-            modelKey="mcfDisbursementPeriodLength"
-            @model-value-changed=${this._updatePropHandle}>
-          </cms2-dict-select>
-        </div>
-      </div>
-    </div>
-
-    ${this._renderIsMfcDisbursementUpdated()}
-  `;
-}
-
 _renderIsMfcDisbursementUpdated() {
   // TODO: warunek widoczności – odnowienie UW z KI pobranym z ICBS.
-  // Podmień poniższy guard na właściwy getter, np.:
-  // if (!this.isMfcRenewalWithIcbsInvestmentCredit) return nothing;
   if (!this.shouldRender('isMfcDisbursementUpdated')) return nothing;
 
   return html`
@@ -74,6 +44,60 @@ _renderIsMfcDisbursementUpdated() {
                   font16>
                 </cms2-info-message>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    ${this._renderMfcDisbursementDates()}
+  `;
+}
+
+_renderMfcDisbursementDates() {
+  if (this.productData.isMfcDisbursementUpdated !== 'no') return nothing;
+
+  const today = new Date();
+
+  return html`
+    <div class="row">
+      <div class="col-4 form-label">
+        <p>${this.localize('ProductParameters.mfcDisbursementDatesLabel')}</p>
+      </div>
+      <div class="col-8">
+        <div class="row">
+          <div class="col-6">
+            <div class="input-container">
+              <cms2-date-input
+                at-id="mfcDisbursementDateFrom"
+                id="mfcDisbursementDateFrom"
+                label=${this.localize('ProductParameters.dateFrom')}
+                .modelValue=${this.productData.mfcDisbursementDateFrom}
+                modelKey="mfcDisbursementDateFrom"
+                .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'mfcDisbursementDateFrom' })}
+                .errorValidators=${[
+                  requiredField(this.productData.productType, { fieldName: 'mfcDisbursementDateFrom' }),
+                  new MaxDate(today, { getMessage: () => this.localize('ProductParameters.dateMustBeInThePast') }),
+                ]}
+                @model-value-changed=${this._updatePropHandle}>
+              </cms2-date-input>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="input-container">
+              <cms2-date-input
+                at-id="mfcDisbursementDateTo"
+                id="mfcDisbursementDateTo"
+                label=${this.localize('ProductParameters.dateTo')}
+                .modelValue=${this.productData.mfcDisbursementDateTo}
+                modelKey="mfcDisbursementDateTo"
+                .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'mfcDisbursementDateTo' })}
+                .errorValidators=${[
+                  requiredField(this.productData.productType, { fieldName: 'mfcDisbursementDateTo' }),
+                  new MaxDate(today, { getMessage: () => this.localize('ProductParameters.dateMustBeInThePast') }),
+                ]}
+                @model-value-changed=${this._updatePropHandle}>
+              </cms2-date-input>
             </div>
           </div>
         </div>
