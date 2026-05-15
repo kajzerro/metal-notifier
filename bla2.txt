@@ -1,98 +1,83 @@
-@Test
-public void shouldCalculateCollateralEndDateForCivilGuaranty_whenEnterDateBeforeRepayment() {
-    // given
-    DisbursementInScenarioContext context = prepareContext();
+_renderMcfAvailabilityPeriod() {
+  return html`
+    <h2 class="section-header">${this.localize('ProductParameters.mcfAvailabilityPeriod')}</h2>
+    ${this._renderEditableSectionInfo({ sectionName: 'amountSection' })}
 
-    CivilGuaranty civilGuaranty = new CivilGuaranty();
-    civilGuaranty.setCollateralEndPeriod("enterDate");
-    civilGuaranty.setCollateralEndDate(LocalDate.of(2026, 4, 10));
+    <div class="row">
+      <div class="col-4 form-label-flex">
+        <p>${this.localize('ProductParameters.mcfDisbursementPeriodLength')}</p>
+      </div>
+      <div class="col-8">
+        <div class="input-container">
+          <cms2-dict-select
+            at-id="mcfDisbursementPeriodLength"
+            id="mcfDisbursementPeriodLength"
+            .modelValue=${this.productData.mcfDisbursementPeriodLength}
+            disabled
+            .dictionary=${this.dictionariesService.getProductCreditFacilityPeriodDictionary(this.productData)}
+            modelKey="mcfDisbursementPeriodLength"
+            @model-value-changed=${this._updatePropHandle}>
+          </cms2-dict-select>
+        </div>
+      </div>
+    </div>
 
-    CollateralFormDataDTO dto = new CollateralFormDataDTO();
-    dto.setCollateralType(CollateralType.CIVIL_GUARANTY.name());
-    dto.setData(civilGuaranty);
-    context.setCollaterals(Collections.singletonList(dto));
-
-    ProductParamsModel productParamsModel = new ProductParamsModel();
-    productParamsModel.setProductType("multiproductCreditFacility");
-    context.setProductParams(productParamsModel);
-
-    AgreementDetailsModel agreementDetailsModel = new AgreementDetailsModel();
-    agreementDetailsModel.setMcfRcfRepaymentDate("10-05-2026");
-    context.setAgreementDetailsModel(agreementDetailsModel);
-
-    // when
-    CollateralRecordRequest recordRequest = mapper.map(context);
-
-    // then
-    CivilGuaranty result = (CivilGuaranty) recordRequest
-            .getCollateralFormDataList().get(0).getData();
-    assertEquals(LocalDate.of(2029, 4, 10), result.getCollateralEndDate());
+    ${this._renderIsMfcDisbursementUpdated()}
+  `;
 }
 
-@Test
-public void shouldCalculateCollateralEndDateForCivilGuaranty_whenMaturityDateAndBgkNotPldKfg() {
-    // given
-    DisbursementInScenarioContext context = prepareContext();
+_renderIsMfcDisbursementUpdated() {
+  // TODO: warunek widoczności – odnowienie UW z KI pobranym z ICBS.
+  // Podmień poniższy guard na właściwy getter, np.:
+  // if (!this.isMfcRenewalWithIcbsInvestmentCredit) return nothing;
+  if (!this.shouldRender('isMfcDisbursementUpdated')) return nothing;
 
-    CivilGuaranty civilGuaranty = new CivilGuaranty();
-    civilGuaranty.setCollateralEndPeriod("maturityDate");
+  return html`
+    <div class="row">
+      <div class="col-4 form-label">
+        <p>${this.localize('ProductParameters.isMfcDisbursementUpdated')}</p>
+      </div>
+      <div class="col-6">
+        <div class="row">
+          <div class="col-12">
+            <ing-radio-group
+              at-id="isMfcDisbursementUpdated"
+              name="isMfcDisbursementUpdated"
+              .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'isMfcDisbursementUpdated' })}>
+              <div
+                class="radio-group"
+                @change=${e => this.updateProp('isMfcDisbursementUpdated', e.target.value)}>
+                <ing-radio
+                  at-id="yes"
+                  name="isMfcDisbursementUpdated[]"
+                  ?checked=${this.productData.isMfcDisbursementUpdated === 'yes'}
+                  .choiceValue=${'yes'}
+                  label=${this._getDescription({ fieldName: 'yes' })}
+                  .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'isMfcDisbursementUpdated' })}>
+                </ing-radio>
+                <ing-radio
+                  at-id="no"
+                  name="isMfcDisbursementUpdated[]"
+                  ?checked=${this.productData.isMfcDisbursementUpdated === 'no'}
+                  .choiceValue=${'no'}
+                  label=${this._getDescription({ fieldName: 'no' })}
+                  .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'isMfcDisbursementUpdated' })}>
+                </ing-radio>
+              </div>
+            </ing-radio-group>
 
-    CollateralFormDataDTO civilDto = new CollateralFormDataDTO();
-    civilDto.setCollateralType(CollateralType.CIVIL_GUARANTY.name());
-    civilDto.setData(civilGuaranty);
-
-    BgkGuarantee bgkGuarantee = new BgkGuarantee();
-    bgkGuarantee.setBgkGuarantyType("notPldKfg");
-
-    CollateralFormDataDTO bgkDto = new CollateralFormDataDTO();
-    bgkDto.setCollateralType(CollateralType.BGK_GUARANTEE.name());
-    bgkDto.setData(bgkGuarantee);
-
-    context.setCollaterals(Arrays.asList(civilDto, bgkDto));
-
-    ProductParamsModel productParamsModel = new ProductParamsModel();
-    productParamsModel.setProductType("multiproductCreditFacility");
-    context.setProductParams(productParamsModel);
-
-    AgreementDetailsModel agreementDetailsModel = new AgreementDetailsModel();
-    agreementDetailsModel.setMcfRcfRepaymentDate("10-05-2026");
-    context.setAgreementDetailsModel(agreementDetailsModel);
-
-    // when
-    CollateralRecordRequest recordRequest = mapper.map(context);
-
-    // then
-    CivilGuaranty result = (CivilGuaranty) recordRequest
-            .getCollateralFormDataList().get(0).getData();
-    assertEquals(LocalDate.of(2029, 5, 10), result.getCollateralEndDate());
-}
-
-@Test
-public void shouldCalculateCollateralEndDateForCivilGuaranty_whenMaturityDateAndNoBgk() {
-    // given
-    DisbursementInScenarioContext context = prepareContext();
-
-    CivilGuaranty civilGuaranty = new CivilGuaranty();
-    civilGuaranty.setCollateralEndPeriod("maturityDate");
-
-    CollateralFormDataDTO dto = new CollateralFormDataDTO();
-    dto.setCollateralType(CollateralType.CIVIL_GUARANTY.name());
-    dto.setData(civilGuaranty);
-    context.setCollaterals(Collections.singletonList(dto));
-
-    ProductParamsModel productParamsModel = new ProductParamsModel();
-    productParamsModel.setProductType("multiproductCreditFacility");
-    context.setProductParams(productParamsModel);
-
-    AgreementDetailsModel agreementDetailsModel = new AgreementDetailsModel();
-    agreementDetailsModel.setMcfRcfRepaymentDate("10-05-2026");
-    context.setAgreementDetailsModel(agreementDetailsModel);
-
-    // when
-    CollateralRecordRequest recordRequest = mapper.map(context);
-
-    // then
-    CivilGuaranty result = (CivilGuaranty) recordRequest
-            .getCollateralFormDataList().get(0).getData();
-    assertEquals(LocalDate.of(2039, 5, 10), result.getCollateralEndDate());
+            <div class="line">
+              <div class="content">
+                <cms2-info-message
+                  at-id="isMfcDisbursementUpdatedTooltip"
+                  .message=${this.productParametersTooltips.isMfcDisbursementUpdatedTooltip}
+                  font16>
+                </cms2-info-message>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
