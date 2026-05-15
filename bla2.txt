@@ -16,7 +16,7 @@ _renderIsMfcDisbursementUpdated() {
               .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'isMfcDisbursementUpdated' })}>
               <div
                 class="radio-group"
-                @change=${e => this.updateProp('isMfcDisbursementUpdated', e.target.value)}>
+                @change=${this._onIsMfcDisbursementUpdatedChange}>
                 <ing-radio
                   at-id="yes"
                   name="isMfcDisbursementUpdated[]"
@@ -50,15 +50,14 @@ _renderIsMfcDisbursementUpdated() {
       </div>
     </div>
 
-    ${this._renderMfcDisbursementDates()}
+    <!-- Date pickers shown when radio === 'no' -->
+    <div style="${this.productData.isMfcDisbursementUpdated === 'no' ? '' : 'display: none;'}">
+      ${this._renderMfcDisbursementDates()}
+    </div>
   `;
 }
 
 _renderMfcDisbursementDates() {
-  if (this.productData.isMfcDisbursementUpdated !== 'no') return nothing;
-
-  const today = new Date();
-
   return html`
     <div class="row">
       <div class="col-4 form-label">
@@ -66,42 +65,62 @@ _renderMfcDisbursementDates() {
       </div>
       <div class="col-8">
         <div class="row">
-          <div class="col-6">
-            <div class="input-container">
-              <cms2-date-input
-                at-id="mfcDisbursementDateFrom"
-                id="mfcDisbursementDateFrom"
-                label=${this.localize('ProductParameters.dateFrom')}
-                .modelValue=${this.productData.mfcDisbursementDateFrom}
-                modelKey="mfcDisbursementDateFrom"
-                .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'mfcDisbursementDateFrom' })}
-                .errorValidators=${[
-                  requiredField(this.productData.productType, { fieldName: 'mfcDisbursementDateFrom' }),
-                  new MaxDate(today, { getMessage: () => this.localize('ProductParameters.dateMustBeInThePast') }),
-                ]}
-                @model-value-changed=${this._updatePropHandle}>
-              </cms2-date-input>
-            </div>
+          <div class="col-2 form-label">
+            <p>${this.localize('ProductParameters.dateFrom')}</p>
           </div>
-          <div class="col-6">
-            <div class="input-container">
-              <cms2-date-input
-                at-id="mfcDisbursementDateTo"
-                id="mfcDisbursementDateTo"
-                label=${this.localize('ProductParameters.dateTo')}
-                .modelValue=${this.productData.mfcDisbursementDateTo}
-                modelKey="mfcDisbursementDateTo"
-                .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'mfcDisbursementDateTo' })}
-                .errorValidators=${[
-                  requiredField(this.productData.productType, { fieldName: 'mfcDisbursementDateTo' }),
-                  new MaxDate(today, { getMessage: () => this.localize('ProductParameters.dateMustBeInThePast') }),
-                ]}
-                @model-value-changed=${this._updatePropHandle}>
-              </cms2-date-input>
-            </div>
+          <div class="col-4">
+            <cms2-product-date-picker
+              id="mfcDisbursementDateFrom"
+              name="mfcDisbursementDateFrom"
+              at-id="mfcDisbursementDateFrom"
+              label=""
+              class="date-input"
+              .modelValue="${this.productData.mfcDisbursementDateFrom}"
+              modelKey="mfcDisbursementDateFrom"
+              placeholder="${this.localize('ProductParameters.datePlaceholder')}"
+              .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'mfcDisbursementDateFrom' })}
+              .errorValidators="${[
+                requiredField(this.productData.productType, { fieldName: 'mfcDisbursementDateFrom' }),
+                new MaxDate(new Date(), { getMessage: () => this.localize('ProductParameters.dateMustBeInThePast') }),
+              ]}"
+              @model-value-changed=${this._updatePropHandle}>
+            </cms2-product-date-picker>
+          </div>
+
+          <div class="col-2 form-label">
+            <p>${this.localize('ProductParameters.dateTo')}</p>
+          </div>
+          <div class="col-4">
+            <cms2-product-date-picker
+              id="mfcDisbursementDateTo"
+              name="mfcDisbursementDateTo"
+              at-id="mfcDisbursementDateTo"
+              label=""
+              class="date-input"
+              .modelValue="${this.productData.mfcDisbursementDateTo}"
+              modelKey="mfcDisbursementDateTo"
+              placeholder="${this.localize('ProductParameters.datePlaceholder')}"
+              .disabled=${this.isDisabled({ sectionName: 'amountSection', propName: 'mfcDisbursementDateTo' })}
+              .errorValidators="${[
+                requiredField(this.productData.productType, { fieldName: 'mfcDisbursementDateTo' }),
+                new MaxDate(new Date(), { getMessage: () => this.localize('ProductParameters.dateMustBeInThePast') }),
+              ]}"
+              @model-value-changed=${this._updatePropHandle}>
+            </cms2-product-date-picker>
           </div>
         </div>
       </div>
     </div>
   `;
+}
+
+_onIsMfcDisbursementUpdatedChange(e) {
+  const value = e.target.value;
+  this.productData = {
+    ...this.productData,
+    isMfcDisbursementUpdated: value,
+    // Czyść daty gdy wracamy na TAK – żeby walidacja required nie wisiała na ukrytych polach
+    ...(value === 'yes' ? { mfcDisbursementDateFrom: null, mfcDisbursementDateTo: null } : {}),
+  };
+  this.dispatchEvent(new CustomEvent('model-value-changed'));
 }
